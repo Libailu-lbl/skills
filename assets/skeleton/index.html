@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>我的工作台</title>
+<!-- 零外链：无 CDN、无外部字体、无图表库。图标全部内联 SVG，断网可用、file:// 可直接打开。 -->
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+
+<div class="app">
+  <!-- ============ 左侧导航 ============ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="brand-mark" id="brandMark" title="点击自定义">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l7 3v6c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6l7-3z"/>
+          <path d="M9.5 12.2l1.8 1.8 3.4-3.6"/>
+        </svg>
+      </span>
+      <span class="brand-text" id="brandText" title="点击自定义">
+        <b id="appName">我的工作台</b>
+        <small id="appSub">单文件 · 离线可用</small>
+      </span>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sidebar-foot"><span class="dot" id="srcDot"></span><span id="srcLabel">本机存储</span></div>
+  </aside>
+
+  <!-- ============ 右侧内容 ============ -->
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1 id="viewTitle">今日</h1>
+        <p id="viewSub">加载中…</p>
+      </div>
+      <div class="topbar-tools">
+        <span class="today-chip" id="todayChip">—</span>
+        <!-- 角色：受限 → 点一下输密码；安全员 → 点一下退回受限 -->
+        <button class="role-pill" id="rolePill" data-role="restricted" type="button">
+          <span id="rolePillTxt">受限模式</span>
+        </button>
+        <!-- 设置：导出 / 导入 / 清空 / 密码 -->
+        <div class="gear-wrap">
+          <button class="gear-btn" id="btnGear" type="button" aria-expanded="false" aria-label="设置">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3.2"/>
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.56V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 3 15a1.7 1.7 0 0 0-1.56-1H1.3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 3 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 7.36 4.5a1.7 1.7 0 0 0 1-1.56V2.8a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.5 8.9c.24.6.8 1 1.46 1h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.56 1z"/>
+            </svg>
+          </button>
+          <div class="gear-menu" id="gearMenu" hidden>
+            <button class="gear-item" id="btnExport" type="button">导出备份（JSON）</button>
+            <button class="gear-item" id="btnImport" type="button">导入恢复</button>
+            <button class="gear-item danger" id="btnReset" type="button">清空数据</button>
+            <div class="gear-sep"></div>
+            <button class="gear-item" id="btnPwd" type="button">密码设置 / 修改</button>
+          </div>
+        </div>
+        <input type="file" id="fileInput" accept="application/json,.json" hidden>
+      </div>
+    </header>
+    <div class="view" id="view"></div>
+  </main>
+</div>
+
+<div id="dialogRoot"></div>
+<div id="toastRoot" class="toast-root"></div>
+
+<!-- 脚本按依赖顺序加载（无 ES module，file:// 可直接运行） -->
+<script src="assets/js/config.js"></script>
+<script src="assets/js/utils.js"></script>
+<script src="assets/js/store.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/router.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

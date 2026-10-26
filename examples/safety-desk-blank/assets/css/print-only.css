@@ -1,0 +1,114 @@
+/* =========================================================
+   print-only.css — 独立打印样式（2026-10-22 新增）
+   ────────────────────────────────────────────────────────
+   为什么单独一个文件：
+     · 屏幕上看到的「纸张预览」靠 print.css 的 .pn-sheet / .pp-sheet 渲染，
+       而**真正进打印机的版式**过去混在同一份 print.css 的 @media print 里，
+       屏幕改动一不小心就带坏出件（反之亦然）。
+     · 现在打印规则全部收在这里，用 <link media="print"> 单独引入，
+       只在打印时生效，**不参与屏幕渲染**，改屏幕不会动到出件。
+
+   版式基准：与「保存为 Word」出的那份 .docx 完全一致（实测自
+   《事故隐患整改通知书（2026.10.22）.docx》）：
+       页面   A4 11906×16838 dxa，页边距 上 1157 / 左右 1406 / 下 781 dxa
+              = 20.4mm / 24.8mm / 13.8mm，页眉页脚 0
+       表体   总宽 9240 dxa（≈163mm），tblInd 270 dxa（≈4.76mm），
+              列宽 720 : 8520，边框 single 0.5pt，cellMar 左右 108 dxa
+       行高   781/640/640/663/6600/1949/663/663/663/683 dxa
+              = 39.05/32/32/33.15/330/97.45/33.15/33.15/33.15/34.15 pt
+       字号   标题 22pt、日期·单位·责任单位 14pt、照片标签 22pt、正文 12pt、
+              批示与底部四行 15pt
+   ★ 表格宽度取「可印区宽 − 左缩进」，右边正好齐可印区右界：
+     Word 原件表宽 163mm 比可印区 160.4mm 宽 2.6mm，会探进右边距；
+     Chrome 打印会按可印区裁切，照抄就会「右边一列被切掉」，
+     故这里缩到可印区内，比例与行高保持原样，肉眼与 Word 件一致。
+   ========================================================= */
+
+/* ---------- 1. 纸张 ---------- */
+@page {
+  size: A4 portrait;
+  margin: 20.4mm 24.8mm 13.8mm 24.8mm;   /* 上 右 下 左，与 Word 件一致 */
+}
+
+/* ---------- 2. 只留纸张：隐藏应用外壳与一切交互元素 ---------- */
+html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+
+/* 顶层只保留当前出件遮罩（通知书 .pn-overlay / 照片页 .pp-overlay / 交接班 .sl-overlay 三选一） */
+body > *:not(.pn-overlay):not(.pp-overlay):not(.sl-overlay) { display: none !important; }
+
+/* 逐个点名，防止某些主题层把导航/按钮塞进遮罩内部 */
+.app-side, .app-sidebar, .app-top, .app-topbar, .app-main, .app-header,
+.topbar, .sidebar, .side, .nav, .navbar, .nav-tree, .tabbar, .tab-bar,
+.pn-toolbar, .pp-toolbar, .pn-tip, .pp-tip,
+.pn-del, .js-upload, .js-file,
+.btn, button, input, select, textarea,
+.dropdown, .dd-menu, .toast, .toast-wrap, .mask,
+[data-no-print], .no-print { display: none !important; }
+
+/* ---------- 3. 遮罩 / 容器还原成普通文档流 ---------- */
+.pn-overlay, .pp-overlay, .sl-overlay {
+  position: static !important; inset: auto !important;
+  background: none !important; padding: 0 !important; margin: 0 !important;
+  overflow: visible !important; display: block !important;
+}
+.pn-wrap, .pp-wrap, .sl-fit { padding: 0 !important; margin: 0 !important; display: block !important; }
+
+/* ---------- 4. 纸张自身不留白（页边距只由 @page 给，两处都给会叠加） ---------- */
+.pn-sheet, .pp-sheet {
+  transform: none !important; margin: 0 !important;
+  box-shadow: none !important; min-height: 0 !important;
+  width: auto !important; padding: 0 !important;
+}
+/* 交接班这张表**不能**把 transform 清掉：缩放是 JS 用 zoom 统一算出来并同时写进预览的，
+   print-only 只管"别把纸张的阴影/内边距带进打印机"，缩放比交给 JS（两边同一个值）。
+   也不写 width:auto —— 纸张内容区宽 243mm 就是保存页 Excel 的自然宽度，可印区 261mm 放得下。 */
+.sl-sheet {
+  box-shadow: none !important; min-height: 0 !important;
+  margin: 0 !important; padding: 0 !important;
+}
+.pp-sheet { height: 277mm !important; }   /* 297 − 上下各 10mm（照片页 @page 由 JS 注入） */
+
+/* ---------- 4b. 交接班记录：与保存页 Excel 打印预览同一套版式 ---------- */
+/* @page（A4 横向 + 常规页边距 左右 18mm / 上下 19mm）由 shiftLog.js 打开预览时注入，
+   排在 print-only.css 后面所以生效；这里只管表格本身。 */
+.sl-paper-table { border-collapse: collapse; table-layout: fixed; }
+.sl-paper-table td, .sl-paper-table th {
+  overflow: visible !important;              /* 内容再多也不裁字 */
+  word-break: break-word; overflow-wrap: break-word;
+}
+.sl-paper-table thead { display: table-header-group; }   /* 表头每页重复 */
+.sl-paper-table tr.c-r-logo, .sl-paper-table tr.c-r-title,
+.sl-paper-table tr.c-r-meta, .sl-paper-table tr.c-r-head,
+.sl-paper-table tr.c-r-foot { break-inside: avoid; page-break-inside: avoid; }
+/* 明细行允许跨页断：备注事件多的时候正常分页，不会把整行推走或被裁掉 */
+.sl-paper-table tr.c-r-item { break-inside: auto; page-break-inside: auto; }
+.sl-note-line { break-inside: avoid; page-break-inside: avoid; }
+
+/* ---------- 5. 表格：与 Word 件同比例、防截断、允许长内容分页 ---------- */
+.pn-table { border-collapse: collapse; table-layout: fixed; }
+.pn-table td {
+  overflow: visible !important;              /* 内容再多也不裁字 */
+  word-break: break-word; overflow-wrap: break-word;
+}
+.pn-photo-cell, .pn-desc, .pn-imgs, .pn-img-row { overflow: visible !important; }
+
+/* 短行尽量不断行（标题 / 日期 / 单位 / 责任单位 / 批示 / 底部四行） */
+.pn-table tr.r-title, .pn-table tr.r-date, .pn-table tr.r-check,
+.pn-table tr.r-dept, .pn-table tr.r-sign, .pn-table tr.r-btm {
+  break-inside: avoid; page-break-inside: avoid;
+}
+/* 照片行可能超过一页：必须允许跨页断，否则整行被推走/被裁 */
+.pn-table tr { break-inside: auto; page-break-inside: auto; }
+.pn-table tr.r-photo { break-inside: auto; page-break-inside: auto; }
+/* 单张照片与图片行本身不切断 */
+.pn-img-row, .pn-img-box, .pn-imgs img, .pp-cell, .pp-cell img {
+  break-inside: avoid; page-break-inside: avoid;
+}
+
+/* ---------- 6. 其它 ---------- */
+.pn-desc { outline: none !important; white-space: pre-wrap; }
+/* 0.5pt 细框线默认可能被浏览器省掉，强制保留 */
+.pn-table, .pn-table td, .pp-cell, .pp-grid, .pn-imgs img {
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}

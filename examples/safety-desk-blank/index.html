@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>安全员工作台</title>
+<!-- 零外链：无 CDN、无外部字体、无图表库。图标与图表均为内联 SVG，断网可用。 -->
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/layout.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/print.css">
+<!-- ★ 独立打印样式：只在打印时生效，不参与屏幕渲染（通知书 / 照片页出件版式） -->
+<link rel="stylesheet" href="assets/css/print-only.css" media="print">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ 左侧导航 ============ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="brand-mark" id="appMark" title="点击自定义图标">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l7 3v6c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6l7-3z"/>
+          <path d="M9.5 12.2l1.8 1.8 3.4-3.6"/>
+        </svg>
+      </span>
+      <span class="brand-text" id="brandText" title="点击自定义工作台名称" style="cursor:pointer">
+        <b id="appName">安全员工作台</b>
+        <small id="appSub">EHS 日常办公台</small>
+      </span>
+    </div>
+
+    <!-- 常用组：置顶，默认展开（含带子菜单的「特种作业」父级） -->
+    <div class="nav-group">
+      <div class="nav-group-title">常用</div>
+      <nav class="nav-list" id="navPrimary"></nav>
+    </div>
+
+    <!-- 更多组：折叠，点击展开 -->
+    <div class="nav-group">
+      <button class="nav-more-btn" id="navMoreBtn" aria-expanded="false" aria-controls="navSecondary">
+        <span>更多</span>
+        <svg class="chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <nav class="nav-list" id="navSecondary" hidden></nav>
+    </div>
+
+    <!-- 常用功能：快捷入口，位于左侧导航下方 -->
+    <div class="nav-group" id="navQuickGroup">
+      <div class="nav-group-title">常用功能</div>
+      <div class="sidebar-quick js-sidebar-quick"></div>
+    </div>
+
+    <div class="sidebar-foot">
+      <span class="dot local" id="srcDot"></span>
+      <span id="srcLabel">本机数据</span>
+    </div>
+  </aside>
+
+  <!-- ============ 右侧内容区 ============ -->
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1 id="viewTitle">安全概览</h1>
+        <p id="viewSub">加载中…</p>
+      </div>
+
+      <div class="topbar-tools">
+        <span class="today-chip" id="todayChip">—</span>
+
+        <!-- 当前角色：受限 → 点一下输六位密码解锁；安全员 → 点一下退回受限 -->
+        <button class="role-pill" id="rolePill" data-role="restricted" type="button"
+                aria-label="当前角色">
+          <span class="gi-ico" id="rolePillIco"></span><span id="rolePillTxt">受限模式</span>
+        </button>
+
+        <!-- 设置齿轮：导入 / 导出 / 清空数据 / 角色 / 密码设置 -->
+        <div class="gear-wrap">
+          <button class="gear-btn" id="btnGear" type="button" aria-expanded="false" aria-controls="gearMenu"
+                  aria-label="设置" title="设置：导入 / 导出 / 清空数据 / 角色 / 密码">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.56V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 3 15a1.7 1.7 0 0 0-1.56-1H1.3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 3 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 7.36 4.5a1.7 1.7 0 0 0 1-1.56V2.8a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.5 8.9c.24.6.8 1 1.46 1h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.56 1z"/></svg>
+          </button>
+
+          <div class="gear-menu" id="gearMenu" hidden>
+            <button class="gear-item" type="button" id="btnImport" data-ico="upload">导入数据<span class="gi-hint">JSON</span></button>
+            <button class="gear-item" type="button" id="btnExport" data-ico="download">导出备份<span class="gi-hint">JSON</span></button>
+            <button class="gear-item is-danger" type="button" id="btnReset" data-ico="trash">清空数据</button>
+
+            <div class="gear-sep"></div>
+            <div class="gear-title">角色与权限</div>
+            <div class="gear-row">
+              <span>当前角色</span>
+              <select id="roleSel" class="ctl-select" title="安全员需要六位密码才能切换">
+                <option value="safety_officer">安全员（全权）</option>
+                <option value="restricted">受限用户</option>
+              </select>
+            </div>
+            <button class="gear-item" type="button" id="btnPwd" data-ico="lock">密码设置 / 修改</button>
+            <button class="gear-item" type="button" id="btnSettings" data-ico="shield">工作台外观（图标 / 名称）</button>
+
+          </div>
+        </div>
+
+        <input type="file" id="fileInput" accept="application/json,.json" hidden>
+      </div>
+    </header>
+
+    <!-- 视图挂载点：各视图只往这里写，互不相调 -->
+    <div class="view" id="view"></div>
+  </main>
+</div>
+
+<!-- 窄屏（<768）底部 Tab 导航，桌面/平板隐藏 -->
+<nav class="tabbar" id="tabbar" aria-label="主导航"></nav>
+
+<div id="dialogRoot"></div>
+<div id="toastRoot" class="toast-root"></div>
+
+<!-- ================= 脚本：按依赖顺序加载（无模块化，file:// 可直接打开） ================= -->
+<script src="assets/js/config.js"></script>
+<script src="assets/js/utils.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/components/icons.js"></script>
+<script src="assets/js/dict.js"></script>
+<script src="assets/js/initial.js"></script>
+<script src="assets/js/components/photoVault.js"></script>
+<script src="assets/js/data/deviceSeed.js"></script>
+<script src="assets/js/store.js"></script>
+<script src="assets/js/code.js"></script>
+<script src="assets/js/dataSource.js"></script>
+<script src="assets/js/metrics.js"></script>
+
+<script src="assets/js/components/stateView.js"></script>
+<script src="assets/js/components/badge.js"></script>
+<script src="assets/js/components/statCard.js"></script>
+<script src="assets/js/components/table.js"></script>
+<script src="assets/js/components/dialog.js"></script>
+<script src="assets/js/components/formDialog.js"></script>
+<script src="assets/js/components/chart.js"></script>
+<script src="assets/js/components/listItem.js"></script>
+<script src="assets/js/components/dropdown.js"></script>
+<script src="assets/js/components/photoPicker.js"></script>
+<script src="assets/js/components/peoplePicker.js"></script>
+<script src="assets/js/components/ocr.js"></script>
+<script src="assets/js/components/lightbox.js"></script>
+<script src="assets/js/components/photoWatermark.js"></script>
+<script src="assets/js/components/docxWriter.js"></script>
+<script src="assets/js/components/printNotice.js"></script>
+<script src="assets/js/components/printPhotos.js"></script>
+<script src="assets/js/brandLogo.js"></script>
+<script src="assets/js/components/xlsxWriter.js"></script>
+
+<script src="assets/js/report.js"></script>
+<script src="assets/js/views/overview.js"></script>
+<script src="assets/js/views/todo.js"></script>
+<script src="assets/js/views/hazard.js"></script>
+<script src="assets/js/views/inspection.js"></script>
+<script src="assets/js/views/training.js"></script>
+<script src="assets/js/views/dashboard.js"></script>
+<script src="assets/js/views/notice.js"></script>
+<script src="assets/js/views/special.js"></script>
+<script src="assets/js/views/specPersonnel.js"></script>
+<script src="assets/js/views/specPermit.js"></script>
+<script src="assets/js/views/devicePersonnel.js"></script>
+<script src="assets/js/views/shiftLog.js"></script>
+<script src="assets/js/views/reportCommon.js"></script>
+<script src="assets/js/views/dailyReport.js"></script>
+<script src="assets/js/views/weeklyReport.js"></script>
+
+<script src="assets/js/router.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

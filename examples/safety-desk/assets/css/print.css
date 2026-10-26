@@ -1,0 +1,276 @@
+/* =========================================================
+   print.css — 隐患整改通知书打印版式
+   ────────────────────────────────────────────────────────
+   版式参数照抄企业现行《事故隐患整改通知书》（word/document.xml 实测值）：
+     · 纸张    A4 纵向 210mm × 297mm
+     · 页边距  上 25.4mm / 下 12.3mm / 左右 31.7mm（原件 dxa：1440/698/1800/1800）
+     · 表体    单表 10 行，两列 1099 : 8141 dxa ≈ 11.9% : 88.1%
+     · 字号    标题 22pt｜检查日期·检查单位·责任单位 14pt｜图片区左 20pt 右 12pt
+               领导批示 15pt｜底部四行 15pt（原件 sz 44/28/28/44·24/30/30）
+     · 行高    39 / 32 / 32 / 33 / 330 / 97 / 33 / 33 / 33 / 34 pt
+               （原件第 2 行 65pt 为「检查日期+检查单位」同行，
+                 现按要求拆成两行各 32pt，合计 64pt 与原件基本一致）
+     · 边框    全框线 0.5pt（原件 sz=4）
+   屏幕预览按 A4 比例缩放；打印时还原真实尺寸。
+   ========================================================= */
+
+/* ---------- 预览遮罩 ---------- */
+.pn-overlay {
+  position: fixed; inset: 0; z-index: 900;
+  background: rgba(15, 23, 42, .55);
+  display: flex; flex-direction: column;
+  overflow: auto; padding: 0 0 40px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------- 工具条（不打印） ---------- */
+.pn-toolbar {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  background: var(--surface, #fff);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, .08);
+}
+.pn-toolbar .pn-tb-title { font-weight: 700; font-size: 14px; margin-right: 4px; }
+.pn-toolbar .pn-spacer { flex: 1 1 auto; }
+.pn-toolbar .pn-field { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2, #475569); }
+.pn-toolbar .pn-field input { width: 130px; }
+.pn-toolbar .input { height: 34px; font-size: 16px; }   /* iOS 不放大页面 */
+.pn-toolbar .btn { height: 34px; }
+.pn-toolbar .pn-tip {
+  flex: 1 0 100%; font-size: 12px; line-height: 1.5;
+  color: var(--text-3, #64748b);
+}
+/* 提示条：打印时由 print-only.css 隐藏（此处不再写 @media print 规则） */
+
+/* ---------- 纸张 ---------- */
+.pn-wrap { padding: 18px 16px 0; display: flex; justify-content: center; }
+.pn-sheet {
+  width: 210mm; min-height: 297mm;
+  box-sizing: border-box;
+  /* ★ 与保存的 Word 件同一套页边距：上 20.4 / 左右 24.8 / 下 13.8 mm
+     （实测自《事故隐患整改通知书（2026.10.22）.docx》的 pgMar） */
+  padding: 20.4mm 24.8mm 13.8mm 24.8mm;
+  background: #fff; color: #000;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .32);
+  transform-origin: top center;
+  font-family: "SimSun", "Songti SC", "Microsoft YaHei", serif;
+}
+
+/* ---------- 表体 ----------
+   ★ 左缩进 4.76mm = Word 件的 tblInd 270 dxa；宽度取「可印区 − 缩进」，
+     右边正好齐可印区右界（照抄 Word 的 163mm 会被 Chrome 按可印区裁掉右列）。 */
+.pn-table {
+  width: calc(100% - 4.76mm); margin-left: 4.76mm;
+  border-collapse: collapse; table-layout: fixed;
+}
+.pn-table td {
+  border: 0.5pt solid #000;
+  padding: 2pt 5pt;
+  vertical-align: middle;
+  word-break: break-word;
+}
+/* ★ 列宽与保存页一致：720 / 8520 twips = 7.8% / 92.2%（原 11.9/88.1 与 Word 件不一致） */
+.pn-c1 { width: 7.8%; }
+.pn-c2 { width: 92.2%; }
+
+/* 1. 标题 */
+.pn-title {
+  font-size: 22pt; font-weight: 700; text-align: center;
+  letter-spacing: 2pt; padding: 6pt 0;
+}
+tr.r-title td { height: 39pt; }
+
+/* 2. 检查日期（独占一行） */
+tr.r-date td { font-size: 14pt; height: 32pt; }
+
+/* 3. 检查单位（独占一行，不再与日期同行） */
+tr.r-check td { font-size: 14pt; height: 32pt; }
+
+/* 4. 责任单位 */
+tr.r-dept td { font-size: 14pt; height: 33pt; }
+
+/* 5. 隐患图片及部位 */
+tr.r-photo td { height: 330pt; }
+/* 照片标签：与保存页一致，每字一段竖排（22pt，竖排居中） */
+.pn-lab {
+  font-size: 22pt; font-weight: 700; text-align: center;
+  line-height: 1.35; vertical-align: middle;
+  writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl;
+  text-orientation: upright; letter-spacing: 2pt;
+}
+/* 领导批示：四字**从上到下竖排**（每字一个块级 span），15pt，居中不溢出。
+   ★ 必须把 .pn-lab 的 vertical-rl 改回 horizontal-tb：
+     竖排书写模式下「块级元素」的排列方向是**从右往左横向**，
+     每字一个块级 span 会被排成「示 批 导 领」四列，看着还是横的（2026-10-22 实测）。
+     改回横排书写 + span 块级 → 四个字才真的是一行一个、从上到下。
+   4 × 15pt × 1.2 ≈ 72pt < 本行 97pt，横排是放不下的（左列只有 7.8%≈11mm）。 */
+.pn-lab2 {
+  font-size: 15pt; line-height: 1.3; padding: 2pt 0 !important;
+  writing-mode: horizontal-tb; -webkit-writing-mode: horizontal-tb;
+  text-orientation: mixed;
+}
+.pn-lab2 span { display: block; line-height: 1.2; white-space: nowrap; text-align: center; }
+.pn-photo-cell { font-size: 12pt; line-height: 1.8; vertical-align: top; padding-top: 8pt; }
+/* 照片在正文之上（与保存页顺序一致），故正文上留 8pt 间距 */
+.pn-desc { white-space: pre-wrap; margin-top: 8pt; }
+.pn-desc .pn-meta { font-size: 10.5pt; color: #333; }
+/* 照片按保存页同一算法重排（fitPhotos 写死 pt 尺寸），这里只管排布与间距 */
+.pn-imgs { display: block; }
+.pn-img-row { display: flex; justify-content: center; gap: 6pt; margin-bottom: 6pt; }
+.pn-imgs img {
+  max-width: 100%; object-fit: contain;
+  border: 0.5pt solid #999; background: #fafafa;
+}
+.pn-img-ph {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 120pt; min-height: 90pt;
+  border: 0.5pt dashed #999; color: #888; font-size: 10.5pt;
+}
+.pn-img-box { position: relative; display: inline-block; }
+.pn-del {
+  position: absolute; top: 2px; right: 2px;
+  width: 20px; height: 20px; line-height: 18px; text-align: center;
+  border: none; border-radius: 50%; cursor: pointer;
+  background: rgba(0, 0, 0, .55); color: #fff; font-size: 14px;
+}
+.pn-desc[contenteditable="true"] { outline: none; }
+.pn-desc[contenteditable="true"]:hover,
+.pn-desc[contenteditable="true"]:focus { outline: 1px dashed #94a3b8; }
+
+/* 6. 领导批示 */
+tr.r-sign td { height: 97pt; font-size: 15pt; }
+.pn-sign { text-align: right; vertical-align: bottom !important; padding-bottom: 8pt !important; }
+
+/* 7~10. 底部四行（责任人 / 验收单位留白，纸质件上手写）；末行 34pt 对齐保存页 683twips */
+tr.r-btm td { height: 33pt; font-size: 15pt; vertical-align: middle; }
+tr.r-btm:last-child td { height: 34pt; }
+
+/* ---------- 打印 ----------
+   ★ 2026-10-22 起：真正的打印规则全部搬到独立的 print-only.css
+     （index.html 里用 <link media="print"> 引入），本文件只管**屏幕预览纸张**。
+     改动屏幕样式不会带坏出件；改出件版式也只动 print-only.css 一处。       */
+
+/* ---------- 窄屏：整体等比缩小，保证一屏看得全 ---------- */
+@media (max-width: 900px) {
+  .pn-wrap { padding: 12px 8px 0; }
+  .pn-toolbar { gap: 8px; padding: 8px 10px; }
+  .pn-toolbar .pn-field input { width: 108px; }
+}
+
+
+/* =========================================================
+   照片单页 A4 出件（作业票照片打印 / Word）
+   ────────────────────────────────────────────────────────
+   与通知书那套 .pn-* 并列，互不干扰：
+     · 纸张 A4，@page 边距 10mm（由 printPhotos.js 打印时注入，
+       避免与通知书 31.7mm 的 @page 打架）
+     · 网格 grid-auto-rows:1fr 平分高度 —— 张数再多也压在一页
+   ========================================================= */
+
+/* ---------- 预览遮罩 ---------- */
+.pp-overlay {
+  position: fixed; inset: 0; z-index: 900;
+  background: rgba(15, 23, 42, .55);
+  display: flex; flex-direction: column;
+  overflow: auto; padding: 0 0 40px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------- 工具条（不打印） ---------- */
+.pp-toolbar {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  background: var(--surface, #fff);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, .08);
+}
+.pp-toolbar .pp-tb-title { font-weight: 700; font-size: 14px; margin-right: 4px; }
+.pp-toolbar .pp-spacer { flex: 1 1 auto; }
+.pp-toolbar .btn { height: 34px; }
+/* 「按长宽自动旋转」开关 */
+.pp-chk {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 34px; padding: 0 10px;
+  border: 1px solid var(--border, #e2e8f0); border-radius: 8px;
+  background: var(--surface, #fff);
+  font-size: 13px; color: var(--text-2, #475569); cursor: pointer;
+  white-space: nowrap;
+}
+.pp-chk:hover { border-color: var(--brand, #0e8f7f); color: var(--brand, #0e8f7f); }
+.pp-chk input { width: 14px; height: 14px; margin: 0; accent-color: var(--brand, #0e8f7f); }
+.pp-toolbar .pp-tip {
+  flex: 1 0 100%; font-size: 12px; line-height: 1.5;
+  color: var(--text-3, #64748b);
+}
+
+/* ---------- 纸张 ---------- */
+.pp-wrap { padding: 18px 16px 0; display: flex; justify-content: center; }
+.pp-sheet {
+  width: 210mm; height: 297mm;
+  box-sizing: border-box;
+  padding: 10mm;
+  display: flex; flex-direction: column;
+  background: #fff; color: #000;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .32);
+  transform-origin: top center;
+  font-family: "Microsoft YaHei", "SimSun", serif;
+}
+
+/* 抬头一行：票号 · 类型 · 地点 · 时段（纸质件归档用，可按需去掉） */
+.pp-head {
+  flex: 0 0 auto;
+  font-size: 10.5pt; line-height: 1.4;
+  padding-bottom: 4mm; margin-bottom: 3mm;
+  border-bottom: 0.5pt solid #999;
+  color: #222;
+}
+
+/* 照片网格：行高 1fr 平分，保证所有照片都在这一页内 */
+.pp-grid {
+  flex: 1 1 auto; min-height: 0;
+  display: grid; gap: 2mm;
+  grid-auto-rows: 1fr;
+}
+.pp-cell {
+  position: relative; min-height: 0; min-width: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: 0.5pt solid #999; background: #fafafa; overflow: hidden;
+}
+.pp-cell img {
+  width: 100%; height: 100%;
+  object-fit: contain;      /* 等比缩放、不变形、不留白边过大 */
+  display: block;
+  /* ★ 2026-10-22 用户要求：照片墙所有页的照片统一再等比缩 5%
+     （与 printPhotos.js 的 PHOTO_SHRINK 同一个数，Word 保存页同步缩）。
+     屏幕预览与浏览器打印都走这条规则，故写在基础样式里而非 @media print。 */
+  transform: scale(.95);
+}
+.pp-no {
+  position: absolute; left: 2px; bottom: 2px;
+  min-width: 14px; padding: 0 3px;
+  font-size: 8pt; line-height: 14px; text-align: center;
+  color: #fff; background: rgba(0, 0, 0, .5); border-radius: 3px;
+}
+/* 证件照说明（姓名 · 作业类别 · 证件照），贴在格子底部居中 */
+.pp-cap {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 2px 4px; font-size: 8pt; line-height: 1.25; text-align: center;
+  color: #111; background: rgba(255, 255, 255, .82);
+}
+.pp-empty {
+  flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
+  font-size: 12pt; color: #888;
+  border: 0.5pt dashed #999;
+}
+
+/* ---------- 打印 ----------
+   照片页的打印规则同样在独立的 print-only.css 里（含 .pp-overlay 还原、
+   纸张 277mm 铺满可印区、每张照片不跨页断裂）。 */
+
+@media (max-width: 900px) {
+  .pp-wrap { padding: 12px 8px 0; }
+  .pp-toolbar { gap: 8px; padding: 8px 10px; }
+}
