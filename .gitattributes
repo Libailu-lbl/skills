@@ -1,0 +1,7 @@
+# 统一用 LF，避免 Windows 提交后整个仓库出现 CRLF 差异
+* text=auto eol=lf
+
+# 二进制
+*.png binary
+*.xlsx binary
+*.pdf binary
