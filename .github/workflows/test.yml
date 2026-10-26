@@ -6,8 +6,11 @@ on:
   pull_request:
 
 jobs:
-  smoke:
+  safety-desk:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: safety-desk-skill
     steps:
       - uses: actions/checkout@v4
 
@@ -16,7 +19,7 @@ jobs:
           node-version: 20
 
       - name: Install test deps
-        working-directory: tests
+        working-directory: safety-desk-skill/tests
         run: npm install --no-audit --no-fund
 
       - name: Run all smoke suites

@@ -1,13 +1,12 @@
-# 依赖（跑自检前在 tests/ 里 npm install）
-node_modules/
-tests/node_modules/
+# 依赖（跑自检前在每个 skill 的 tests/ 里 npm install）
+**/node_modules/
 
 # 自检产物
 *.log
 *.pdf
-_print_test.html
-*tmp*.xlsx
-_diag_*.xlsx
+**/_print_test.html
+**/_diag_*.xlsx
+**/*tmp*.xlsx
 
 # 系统 / 编辑器
 .DS_Store
