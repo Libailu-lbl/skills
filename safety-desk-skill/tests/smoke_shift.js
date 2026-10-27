@@ -495,18 +495,18 @@ function ok(name, cond, extra) {
   ok('内置图标里有 award', !!award);
   award.click();
   await wait(80);
-  doc.getElementById('setName').value = '梦百合 EHS 台';
+  doc.getElementById('setName').value = '示例 EHS 台';
   doc.getElementById('setSub').value = '安全员专用';
   doc.querySelector('.js-ok').click();
   await wait(320);
-  ok('名称已改到左上角', doc.getElementById('appName').textContent === '梦百合 EHS 台',
+  ok('名称已改到左上角', doc.getElementById('appName').textContent === '示例 EHS 台',
     doc.getElementById('appName').textContent);
   ok('副标题已改', doc.getElementById('appSub').textContent === '安全员专用');
   ok('图标已切换', doc.querySelector('.brand-mark').getAttribute('data-icon') === 'award',
     doc.querySelector('.brand-mark').getAttribute('data-icon'));
-  ok('浏览器标题同步', doc.title === '梦百合 EHS 台', doc.title);
+  ok('浏览器标题同步', doc.title === '示例 EHS 台', doc.title);
   ok('设置已持久化', SD.store.getSettings().appIcon === 'award' &&
-    SD.store.getSettings().appName === '梦百合 EHS 台');
+    SD.store.getSettings().appName === '示例 EHS 台');
 
   /* ---------- 11. 密码修改 ---------- */
   console.log('== 11. 密码设置 ==');

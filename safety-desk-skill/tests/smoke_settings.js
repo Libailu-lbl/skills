@@ -82,15 +82,15 @@ function ok(name, cond, extra) {
   ok('有副标题输入框', !!subInput);
 
   console.log('== 3. 改名并保存 ==');
-  nameInput.value = '梦百合 EHS 台';
+  nameInput.value = '示例 EHS 台';
   subInput.value = '日常安全办公';
   modal.querySelector('.js-ok').dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
   await wait(200);
   ok('弹窗已关闭', !doc.querySelector('.mask'));
-  ok('品牌文字已更新', doc.getElementById('appName').textContent === '梦百合 EHS 台', doc.getElementById('appName').textContent);
+  ok('品牌文字已更新', doc.getElementById('appName').textContent === '示例 EHS 台', doc.getElementById('appName').textContent);
   ok('副标题已更新', doc.getElementById('appSub').textContent === '日常安全办公', doc.getElementById('appSub').textContent);
-  ok('document.title 已更新', doc.title === '梦百合 EHS 台', doc.title);
-  ok('store 已写入', SD.store.getSettings().appName === '梦百合 EHS 台', SD.store.getSettings().appName);
+  ok('document.title 已更新', doc.title === '示例 EHS 台', doc.title);
+  ok('store 已写入', SD.store.getSettings().appName === '示例 EHS 台', SD.store.getSettings().appName);
 
   console.log('== 4. 空名校验拦截 ==');
   doc.getElementById('btnSettings').dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
@@ -108,13 +108,13 @@ function ok(name, cond, extra) {
   console.log('== 5. 持久化 ==');
   const raw = win.localStorage.getItem('sd_safety_desk_v1');
   let persisted = false, persistedName = null;
-  try { const o = JSON.parse(raw); persistedName = o.settings && o.settings.appName; persisted = persistedName === '梦百合 EHS 台'; } catch (e) {}
+  try { const o = JSON.parse(raw); persistedName = o.settings && o.settings.appName; persisted = persistedName === '示例 EHS 台'; } catch (e) {}
   ok('localStorage 含自定义名称', persisted, persistedName);
 
   console.log('== 6. 导出文件名前缀 ==');
   // 直接校验导出文件名逻辑（不真正触发下载）
   const fname = (SD.store.getSettings().appName || '安全员工作台') + '备份-' + SD.utils.today() + '.json';
-  ok('导出文件名带自定义前缀', fname.indexOf('梦百合 EHS 台备份-') === 0, fname);
+  ok('导出文件名带自定义前缀', fname.indexOf('示例 EHS 台备份-') === 0, fname);
 
   console.log('== 7. 无 JS 报错 ==');
   ok('无 JS 报错', errors.length === 0, errors.slice(0, 3).join(' | '));

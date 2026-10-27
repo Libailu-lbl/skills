@@ -424,7 +424,7 @@ SD.app = (function () {
         '<span class="t-3 t-sm">正方形效果最好，会自动缩到 96×96</span></div>' +
       '</div>' +
       '<label class="field"><span class="lbl">工作台名称</span>' +
-        '<input class="input" id="setName" maxlength="20" value="' + U.esc(cur.appName) + '" placeholder="如：梦百合 EHS 台">' +
+        '<input class="input" id="setName" maxlength="20" value="' + U.esc(cur.appName) + '" placeholder="如：示例 EHS 台">' +
       '</label>' +
       '<label class="field"><span class="lbl">副标题</span>' +
         '<input class="input" id="setSub" maxlength="30" value="' + U.esc(cur.appSub) + '" placeholder="如：日常安全办公">' +
