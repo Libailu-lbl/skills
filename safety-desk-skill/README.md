@@ -52,7 +52,8 @@
 ### 1）跑起来看看（不需要装任何东西）
 
 ```bash
-git clone <this-repo> && cd safety-desk-skill
+git clone https://github.com/Libailu-lbl/skills.git
+cd skills/safety-desk-skill
 # 直接双击 examples/safety-desk/index.html 也行
 node tests/serve.js 8124 examples/safety-desk
 # 浏览器打开 http://127.0.0.1:8124/index.html

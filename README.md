@@ -13,7 +13,8 @@
 ### 只想跑起来看看
 
 ```bash
-cd safety-desk-skill
+git clone https://github.com/Libailu-lbl/skills.git
+cd skills/safety-desk-skill
 node tests/serve.js 8124 examples/safety-desk      # 需要 Node 18+
 # 浏览器打开 http://127.0.0.1:8124/index.html
 ```
