@@ -488,6 +488,32 @@ function ok(name, cond, extra) {
   const firstCell = ov && ov.querySelector('.pp-cell');
   ok('第一格是证件照（带说明）', !!firstCell && /pp-cap/.test(firstCell.innerHTML),
     firstCell && firstCell.textContent.slice(0, 40));
+  /* ★ 2026-10-27 修 bug 的回归：一次点击只保存一份 .docx。
+     修复前 loadSizes 的兜底定时器不判 finished → 图片加载完后 800ms 又回调一次
+     → 整条导出链跑两遍 → 浏览器落下两个同名文件（第二个带 (1)）。
+     这里把 Image 换成「立即 onload」的假实现，模拟真实浏览器（图片很快加载完）。 */
+  if (ov) {
+    let dlCount = 0;
+    const origDownload = SD.comp.docxWriter.download;
+    SD.comp.docxWriter.download = function () { dlCount++; };
+    const OrigImage = win.Image;
+    win.Image = function () {
+      this.naturalWidth = 640; this.naturalHeight = 480;
+      this.onload = null; this.onerror = null;
+      const self = this;
+      Object.defineProperty(this, 'src', {
+        set: function () { setTimeout(function () { if (self.onload) self.onload(); }, 0); },
+        get: function () { return ''; }
+      });
+    };
+    const docBtn = ov.querySelector('.js-doc');
+    ok('预览里有「保存为 Word」按钮', !!docBtn);
+    if (docBtn) click(docBtn);
+    await wait(1600);                       // 必须跨过 800ms 兜底定时器才抓得到第二次
+    ok('● 一次点击只保存一份 Word（修复前会落两份同名文件）', dlCount === 1, dlCount);
+    SD.comp.docxWriter.download = origDownload;
+    win.Image = OrigImage;
+  }
   if (ov) { click(ov.querySelector('.js-close')); await wait(200); }
   ok('关闭打印预览', !doc.querySelector('.pp-overlay'));
 

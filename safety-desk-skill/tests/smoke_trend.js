@@ -77,7 +77,7 @@ function ok(name, cond, extra) {
   ok('仍返回 12 个月窗口', dt2.months.length === 12);
   ok('从台账算出部门', dt2.depts.length > 0, dt2.depts.map(d => d.dept + ':' + d.total).join(' '));
   /* 兜底口径的真正不变量：各月各部门合计 === 台账里该月（按 foundDate 归月）的隐患条数。
-     （以前是拿演示曲线 TREND_CREATED 比大小 —— 演示曲线是写死的，而台账日期是相对今天造的，
+     （旧断言拿演示曲线比大小 —— 演示曲线是写死的，而台账日期相对今天造，
       跨月那几天会出现台账条数 > 曲线值，属于测试口径问题，不是程序错。） */
   const U2 = SD.utils;
   const byMonth = {};

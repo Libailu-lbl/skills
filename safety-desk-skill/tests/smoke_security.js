@@ -254,7 +254,8 @@ function ok(name, cond, extra) {
     const MM = 96 / 25.4;
     ok('空位宽 38mm（原表 A3 里那段空档）', Math.abs(parseFloat(cs.minWidth) - 38 * MM) < 1,
       cs.minWidth + ' = ' + (parseFloat(cs.minWidth) / MM).toFixed(1) + 'mm');
-    ok('空位是一条可签字的横线（border-bottom）', /solid/.test(cs.borderBottomStyle) || cs.borderBottomWidth !== '0px',
+    /* ★ 2026-10-27 用户要求：签名位只留空白，去掉下划线 */
+    ok('空位只留空白、没有下划线', cs.borderBottomStyle === 'none' || cs.borderBottomWidth === '0px',
       cs.borderBottom);
     ok('空位是行内块、不塌成 0 宽', cs.display === 'inline-block', cs.display);
   }

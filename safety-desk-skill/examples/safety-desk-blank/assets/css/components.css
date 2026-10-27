@@ -870,7 +870,8 @@ table.tbl tr.row-warn td:first-child{ box-shadow:inset 3px 0 0 var(--lv-large); 
    原表 A3 里「巡检人员：」后面本来就有约 24 个半角空格（≈38mm）的空档，这里照它留 38mm。 */
 .sl-paper-table .c-blank{
   display:inline-block; min-width:38mm; height:1em;
-  border-bottom:1px solid #000;   /* 一条细线，签在哪里一眼看得见（不占额外行高） */
+  /* 2026-10-27 用户要求：去掉下划线，只留 38mm 空白供现场手写姓名 */
+  border-bottom:0;
   margin:0 1mm; vertical-align:-2px;
 }
 .sl-pn-tip{ font-size:12px; color:var(--text-3); }

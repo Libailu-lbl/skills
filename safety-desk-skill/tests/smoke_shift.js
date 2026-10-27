@@ -261,6 +261,15 @@ function ok(name, cond, extra) {
   const metaTxt = ov ? ov.querySelector('.c-meta').textContent : '';
   ok('打印件里巡查人员留空（不出现姓名）', metaTxt.indexOf('王安全') < 0, metaTxt);
   ok('打印件保留厂区/部门', /缝制中心/.test(metaTxt) && /安全环保部/.test(metaTxt));
+  /* ★ 2026-10-27 用户要求：签名位只留空白，不要下划线 */
+  const blankEl = ov ? ov.querySelector('.c-blank') : null;
+  const blankCs = (blankEl && win.getComputedStyle) ? win.getComputedStyle(blankEl) : null;
+  ok('● 巡检人员签名位存在（38mm 空白区）', !!blankEl,
+    blankCs ? blankCs.minWidth : null);
+  ok('● 签名位无下划线（border-bottom 已去除）',
+    !!blankCs && (blankCs.borderBottomWidth === '0px' || blankCs.borderBottomStyle === 'none' ||
+      blankCs.borderBottomWidth === ''),
+    blankCs ? (blankCs.borderBottomWidth + ' / ' + blankCs.borderBottomStyle) : 'null');
   ok('打印件显示班次与日期', /白班/.test(ov.querySelectorAll('.c-meta')[0].textContent) &&
     ov.querySelectorAll('.c-meta')[1].textContent.indexOf(today) >= 0);
   const noteTxt = ov ? ov.querySelector('td.c-note').textContent : '';

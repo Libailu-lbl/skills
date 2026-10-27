@@ -222,7 +222,9 @@ SD.comp.printPhotos = (function () {
       img.onerror = function () { out[i] = { w: 4, h: 3 }; done(); };   // 读不到就按 4:3 兜底
       img.src = src;
     });
-    setTimeout(function () { finished = true; cb(out); }, 800);   // 兜底：读不到尺寸也按时出件，不挂死
+    setTimeout(function () { if (!finished) { finished = true; cb(out); } }, 800);
+    /* ★ 2026-10-27 修 bug：原来不判 finished → 图片正常加载完后（约几百毫秒）
+       这里的兜底又回调一次，整个导出链跑两遍，一次点击生成两份同名 .docx。*/   // 兜底：读不到尺寸也按时出件，不挂死
   }
 
   /* ---------------- Word 导出（真 .docx） ----------------
