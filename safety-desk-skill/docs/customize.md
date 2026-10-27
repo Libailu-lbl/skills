@@ -18,7 +18,7 @@
 
 - 内置图标库：`components/icons.js` 里挑一个名字（如 `shield` / `clipboard`）
 - 上传自己的图片：外观弹窗里选图片 → 转成 dataURL 存在本机
-- 打印件左上角的公司标识：替换 `assets/img/mily-logo.png`，**并同步 `assets/js/brandLogo.js` 里的 base64**（导出 Excel 时嵌的就是这份 base64）
+- 打印件左上角的公司标识：替换 `assets/img/logo.png`，**并同步 `assets/js/brandLogo.js` 里的 base64**（导出 Excel 时嵌的就是这份 base64）
 
 ```bash
 # 换 base64（替换 png 后执行）
@@ -79,7 +79,9 @@ PY
 ```js
 codeRules: {
   hazard: { prefix:'FZYH', label:'隐患编号', withYear:false, seqLen:7 },  // FZYH-0000001
-  notice: { prefix:'FZTG', label:'通知编号', withYear:true,  seqLen:3 }   // FZTG-2026-001
+  notice: { prefix:'FZTG', label:'通知编号', withYear:true,  seqLen:3 },  // FZTG-2026-001
+  // 动态前缀（作业票）：FZ + 作业类型名前两字拼音首字母 → 吊装作业 FZDZ-0000001
+  permit: { prefix:'FZ', prefixFrom:'type', label:'作业票编号', withYear:false, seqLen:7 }
 }
 ```
 
@@ -91,8 +93,13 @@ codeRules: {
 | `seqLen` | 序号位数（7 → `0000001`），同时作为校验位数 |
 | `seqMin/Max` | 可选，放宽位数区间（兼容历史短号/长号） |
 | `allowLegacy` | 默认 `true`，放行换号前的老格式；`false` = 只认新号 |
+| `prefixFrom` | 可选，动态前缀取自哪个字段（作业票 `'type'`）；配了它前缀随类型名变 |
 
 新增表单会**默认顺延填入下一个可用编号**（可手改、可清空手填），保存时校验「非空 + 格式 + 同类唯一」。
+作业票还多一条：编号前缀要跟作业类型对得上（拿别的类型的号会提示该用哪个）。
+
+> 作业类型（`DICT.permitType`）改名或新增，前缀自动跟着变，不用改代码；
+> 首字母表在 `assets/js/pinyin.js`，字表外的生僻字走兜底（见 `schema.md` 特殊情形表）。
 
 ---
 

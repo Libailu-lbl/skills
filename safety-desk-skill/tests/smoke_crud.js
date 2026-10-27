@@ -438,7 +438,7 @@ function ok(name, cond, extra) {
   ok('作业票表单有照片位', !!wpSlot);
   ok('照片选择器已挂载', !!(wpSlot && wpSlot._ph));
   if (wpSlot && wpSlot._ph) wpSlot._ph.set([P1, P1]);
-  set(m, 'ff_code', 'FZZY-0000996');
+  set(m, 'ff_code', 'FZDH-0000996');
   set(m, 'ff_location', '冒烟-照片打印测试位');
   set(m, 'ff_dept', '安环部');
   set(m, 'ff_applicant', '王安全');
@@ -649,7 +649,7 @@ function ok(name, cond, extra) {
       return pred();
     };
     if (permitEl) {
-      const code = (permitEl.textContent.match(/FZZY-\d+/) || [])[0];
+      const code = (permitEl.textContent.match(/FZ[A-Z]{2}-\d+/) || [])[0];
       const before = SD.app.state.summary.workPermits.find(p => p.code === code);
       ok('取到作业票单据 ' + code, !!before, before && before.status);
       permitEl.querySelector('.todo-check').dispatchEvent(new win.MouseEvent('click', { bubbles: true }));

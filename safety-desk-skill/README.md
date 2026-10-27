@@ -72,7 +72,7 @@ node tests/serve.js 8132 my-desk
 
 ```bash
 cd tests && npm install && cd ..
-bash scripts/run_all_tests.sh          # 两套示例全量：1755 项
+bash scripts/run_all_tests.sh          # 两套示例全量：2052 项
 node scripts/print_probe.js http://127.0.0.1:8124/index.html   # 真打印几页
 ```
 
@@ -103,14 +103,15 @@ safety-desk-skill/
 │       ├── index.html
 │       └── assets/{css/app.css, js/{config,utils,store,auth,router,app}.js}
 ├── examples/
-│   ├── safety-desk/            ★ 完整示例：9 模块 / 48 JS / 1201 项自检
-│   ├── safety-desk-blank/      同一套代码的「空白版」（无示例数据，554 项自检）
+│   ├── safety-desk/            ★ 完整示例：9 模块 / 49 JS / 1355 项自检
+│   ├── safety-desk-blank/      同一套代码的「空白版」（无示例数据，697 项自检）
 │   └── README.md
 ├── tests/                      jsdom 自检套件 + 静态服务（npm install 后使用）
 └── scripts/
     ├── run_all_tests.sh        一条命令跑完两套
     ├── print_probe.js          Chrome headless 真打印 → 数页数
     ├── compare_xlsx.py         导出件与原表逐格 diff
+    ├── gen_pinyin_js.py        重新生成拼音首字母表（改编号前缀规则时才用）
     └── scaffold.sh             从骨架生成新工作台
 ```
 
@@ -123,7 +124,7 @@ safety-desk-skill/
 | 首屏 | 预置示例数据（隐患/巡检/培训/台账…） | 全空，从「登记第一条」开始 |
 | 数据源 | 模拟数据，可切「真实接口」 | 固定本机存储 |
 | 适合 | 给客户/同事看效果 | 真正拿去用 |
-| 自检 | 1201 项 | 554 项 |
+| 自检 | 1355 项 | 697 项 |
 
 两套共用同一个架构，改逻辑时两边同步，自检也必须两边都跑。
 

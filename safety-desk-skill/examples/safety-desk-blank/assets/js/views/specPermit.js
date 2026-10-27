@@ -35,7 +35,14 @@ SD.views.specPermit = (function () {
   }
 
   var FIELDS = [
-    SD.code.field('permit'),              /* 作业票编号：必填，手动填写 */
+    /* 作业票编号：前缀按作业类型动态生成（FZ + 类型名首字母），随类型联动。
+       例：吊装作业 → FZDZ-0000001；动火作业 → FZDH-0000001。
+       前缀规则见 code.js 的「动态前缀」段，首字母表见 pinyin.js。 */
+    SD.code.field('permit', {
+      dependsOn: 'type',
+      help: '前缀按作业类型自动生成：FZ + 类型名称前两个字的拼音首字母（吊装作业 → FZDZ-0000001），' +
+            '序号 7 位、各类型分别顺延；可手动修改，同一作业票内不可重复'
+    }),
     { name: 'type', label: '作业类型', type: 'select', required: true, options: function () { return SD.dict.DICT.permitType; } },
     { name: 'location', label: '作业地点', type: 'text', required: true, full: true, placeholder: '例：B 区焊接工位' },
     { name: 'dept', label: '申请部门', type: 'text', required: true },

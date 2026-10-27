@@ -46,11 +46,12 @@ SD.CONFIG = {
        · training    培训编号     FZPX-2026-001  带年份 · 序号 3 位
        · certificate 证书编号     ZGZS-001       ★ 2026-10-25 按用户口径确定：无年份 · 序号 3 位
        · notice      通知编号     FZTG-2026-001  带年份 · 序号 3 位
-       · permit      作业票编号   FZZY-0000001   无年份 · 序号 7 位
+       · permit      作业票编号   FZ+类型首字母-0000001  ★ 2026-10-28 起按作业类型动态生成
+                                  （吊装作业 → FZDZ-0000001、动火作业 → FZDH-0000001）
        · special     人员编号     TZZY-001       无年份 · 序号 3 位
        编号由用户掌控：新增表单**默认顺延填入下一个可用编号**（可手动改，
        清空手填也行），保存时校验「非空 + 格式 + 同类型唯一」，不再自动补号；
-       各类型序号池仍彼此独立（隐患 FZYH-0000001 与作业票 FZZY-0000001 互不影响）。
+       各类型序号池仍彼此独立（隐患 FZYH-0000001 与作业票 FZDZ-0000001 互不影响）。
        存量老编号（HZ-2026-001 / CT-001 / FZ-0000001 这类）仍可原样保存，属兼容放行，
        建议在日常维护中逐步换成新号（改号只影响展示与检索，不影响统计）。
 
@@ -70,7 +71,7 @@ SD.CONFIG = {
     certificate: { prefix: 'ZGZS', label: '证书编号',   withYear: false, seqLen: 3 },
     notice:      { prefix: 'FZTG', label: '通知编号',   withYear: true,  seqLen: 3 },
     special:     { prefix: 'TZZY', label: '人员编号',   withYear: false, seqLen: 3 },
-    permit:      { prefix: 'FZZY', label: '作业票编号', withYear: false, seqLen: 7 },
+    permit:      { prefix: 'FZ', prefixFrom: 'type', label: '作业票编号', withYear: false, seqLen: 7 },
     device:      { prefix: 'TZSB', label: '设备人员编号', withYear: false, seqLen: 3 }
   },
 

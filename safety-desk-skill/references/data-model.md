@@ -90,7 +90,7 @@
 ### workPermits — 危险作业票
 
 ```js
-{ code:'FZZY-0000001', type:'动火/受限空间/高处/吊装/临时用电/盲板抽堵/断路/动土',
+{ code:'FZDZ-0000001', type:'动火/受限空间/高处/吊装/临时用电/盲板抽堵/断路/动土',
   location, dept, applicant, leader, workers:[], startAt, endAt, photos:[],
   status:'draft|pending|approved|working|done|cancelled',
   flow:[…], approvedBy }
@@ -118,6 +118,10 @@
 | `id`（`uid()`） | 纯内部记录 | 不要展示给用户 |
 
 编号规则集中在 `config.js → codeRules`，新增表单**默认顺延填入**（可手改、可清空手填），换号前的老编号走兼容放行（`allowLegacy`）。
+
+危险作业票用**动态前缀**（`prefixFrom:'type'`）：`FZ` + 作业类型名前两字拼音首字母 + 7 位序号
+（吊装作业 `FZDZ-0000001`）。首字母表在 `assets/js/pinyin.js`，序号按前缀各自顺延；
+单字类型只取 1 位、首字母撞车按字典顺序先到先得并延长取字（详见 `examples/safety-desk/data/schema.md`）。
 
 ---
 

@@ -5,7 +5,7 @@
    全屏遮罩 + 图居中 + 左右切换 + 计数 + 键盘操作。
 
    用法：
-     SD.comp.lightbox.open(['data:image...', ...], 0, { title: 'FZZY-0000001 动火作业' });
+     SD.comp.lightbox.open(['data:image...', ...], 0, { title: 'FZDH-0000001 动火作业' });
      元素也支持对象：{ src: 'data:...', title: '作业面全景' }
 
    交互：Esc 或点遮罩空白处关闭；← → 切换；>1 张时才显示箭头。

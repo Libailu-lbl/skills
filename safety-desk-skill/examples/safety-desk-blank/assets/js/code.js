@@ -22,9 +22,22 @@
    ★ 2026-10-24 起：七类单据按类型各用各的编号体系（规则表见 config.js）：
       隐患 FZYH-0000001（7 位）｜巡检 FZXJ-2026-001（带年份 3 位）｜
       培训 FZPX-2026-001（带年份 3 位）｜通知 FZTG-2026-001（带年份 3 位）｜
-      作业票 FZZY-0000001（7 位）｜人员 TZZY-001（3 位）｜证书 ZGZS-001（2026-10-25 定）
-     · 各类型序号池仍彼此独立（隐患 FZYH-0000001 与作业票 FZZY-0000001 可并存，
+      作业票 FZ+类型首字母-0000001（7 位）｜人员 TZZY-001（3 位）｜证书 ZGZS-001
+     · 各类型序号池仍彼此独立（隐患 FZYH-0000001 与作业票 FZDZ-0000001 可并存，
        唯一性只在同类型内比较），互不借号、互不撞号
+
+   ★ 2026-10-28 起：危险作业票前缀改为**按作业类型动态生成**：
+      前缀 = 固定前缀 FZ + 作业类型名称前两个汉字的拼音首字母（大写）
+      例：吊装作业 → DZ → FZDZ-0000001；动火作业 → DH → FZDH-0000001
+     · 序号仍为 7 位，各前缀各自顺延（FZDZ-0000001 与 FZDH-0000001 可并存）
+     · 单字名称 → 只取 1 位首字母（FZH-0000001）；无汉字（如 LOTO）→ 取字母
+     · 两个类型首字母相同（受限空间/射线探伤/水下 都是 SX）→ 按字典顺序
+       先登记者保留 2 位前缀，后来者自动延长取第 3、第 4 位首字母
+       （FZSX / FZSXT / FZSXZ），仍相同则加序号（FZSX2）
+     · 首字母表在 pinyin.js（GB2312 全字库，离线），本文件只做分配与拼接
+     · 校验放宽为「FZ + 1~6 位大写字母 + - + 7 位数字」，另加一条**软校验**：
+       若前缀属于「另一个现存类型」，则明确提示应换成当前类型的编号；
+       不属于任何现存类型的前缀（旧号 FZZY、类型改名后的旧前缀）照常放行
 
    三条硬规则（check 的判定顺序）：
      1. 不能为空            → 「XX编号」不能为空
@@ -91,16 +104,25 @@ SD.code = (function () {
     return { lo: lo, hi: hi };
   }
 
-  /** 按规则拼校验正则（显式 pattern 优先） */
-  function patternOf(type) {
+  /** 按规则拼校验正则（显式 pattern 优先；typeVal 见下方「动态前缀」） */
+  function patternOf(type, typeVal) {
     var r = rule(type);
     if (r.pattern) return new RegExp(r.pattern);
-    var p = escRe(r.prefix);
     var rg = seqRange(r);
     var seq = (rg.lo === rg.hi) ? String(rg.lo) : (rg.lo + ',' + rg.hi);
-    var core = p + '-' + (r.withYear === false ? '' : '\\d{4}-') + '\\d{' + seq + '}';
-    if (r.allowNoYear && r.withYear !== false) {
-      core = '(?:' + core + '|' + p + '-\\d{' + seq + '})';
+    var core;
+    if (r.prefixFrom) {
+      /* 动态前缀（作业票）：形状固定为「FZ + 1~6 位大写字母 + 序号」，
+         不写死成当前作业类型的那一个 —— 类型改名、历史数据、跨类型补录
+         都要能存得进；类型与前缀对不对得上由 check() 单独给软提示 */
+      core = escRe(r.prefix) + '[A-Z]{1,6}-' +
+        (r.withYear === false ? '' : '\\d{4}-') + '\\d{' + seq + '}';
+    } else {
+      var p = escRe(r.prefix);
+      core = p + '-' + (r.withYear === false ? '' : '\\d{4}-') + '\\d{' + seq + '}';
+      if (r.allowNoYear && r.withYear !== false) {
+        core = '(?:' + core + '|' + p + '-\\d{' + seq + '})';
+      }
     }
     /* 存量老编号兼容：默认放行，规则里 allowLegacy:false 可关掉 */
     if (r.allowLegacy !== false) {
@@ -109,33 +131,121 @@ SD.code = (function () {
     return new RegExp('^' + core + '$');
   }
 
-  /** 示例编号（隐患 FZYH-0000001 / 巡检 FZXJ-2026-001 …），只用于 placeholder 与错误提示 */
-  function sample(type) {
+  /* ---------- 动态前缀：危险作业票 = FZ + 作业类型首字母 ----------
+     规则表里给 permit 配 prefixFrom（见 config.js），本段负责三件事：
+       ① 类型名 → 首字母（查 pinyin.js，离线字表）
+       ② 首字母撞车时怎么分（先登记者占 2 位，后来者延长取字，再撞加序号）
+       ③ 前缀与作业类型是否对得上（check 的软提示，不拦历史数据）
+
+     为什么「先到先得」而不是「大家一起重新算」：
+       如果按「全局重新分配」来，某天新增一个同首字母的类型，
+       已有类型的编号前缀会被迫改变，历史台账的号就全对不上了。
+       所以按字典顺序占位，新增类型只影响它自己。 */
+
+  /** 字典里的作业类型名（['动火作业', ...] 或 [{v,n}] 两种写法都吃） */
+  function permitNames() {
+    var d = null;
+    if (SD.mock && SD.mock.DICT) d = SD.mock.DICT;
+    else if (SD.dict && SD.dict.DICT) d = SD.dict.DICT;
+    var arr = (d && d.permitType) || [];
+    return arr.map(function (o) {
+      return (o && typeof o === 'object') ? String(o.v == null ? '' : o.v) : String(o);
+    }).filter(function (s) { return s; });
+  }
+
+  /** 类型名能派生出几个首字母（跳过数字、标点、空格） */
+  function letterCount(name) {
+    if (!SD.pinyin) return 0;
+    return SD.pinyin.initials(name, 999).length;
+  }
+
+  /**
+   * 给一个类型名分配前缀尾串（不含固定的 FZ）
+   * @param {string} name  作业类型名
+   * @param {object} used  已被占用的尾串集合（会被就地写入）
+   */
+  function allocTail(name, used) {
+    var total = letterCount(name);
+    if (!total) return 'QT';                      // 一个字母都取不到 → 归「其他」
+    var start = total < 2 ? 1 : 2;                // 单字名称只能取 1 位
+    for (var len = start; len <= total; len++) {
+      var p = SD.pinyin.initials(name, len);
+      if (p && !used[p]) return p;
+    }
+    /* 整个名称首字母都一样（同名/同字母串）→ 加序号 2、3… */
+    var base = SD.pinyin.initials(name, start) || 'QT';
+    for (var k = 2; k < 100; k++) {
+      if (!used[base + k]) return base + k;
+    }
+    return base;
+  }
+
+  /** 当前字典的前缀分配表（name → 尾串）；extra 为不在字典里的临时类型 */
+  function tailMap(extra) {
+    var names = permitNames();
+    var e = String(extra == null ? '' : extra).trim();
+    if (e && names.indexOf(e) < 0) names = names.concat([e]);
+    var used = {}, map = {};
+    names.forEach(function (n) {
+      if (map[n] != null) return;
+      var t = allocTail(n, used);
+      used[t] = true;
+      map[n] = t;
+    });
+    return map;
+  }
+
+  /** 某个作业类型应得的前缀（含固定前缀 FZ） */
+  function prefixOf(type, typeVal) {
+    var r = rule(type);
+    if (!r.prefixFrom) return r.prefix;
+    var name = String(typeVal == null ? '' : typeVal).trim();
+    if (!name) name = permitNames()[0] || '';
+    if (!name) return r.prefix;
+    var map = tailMap(name);
+    return r.prefix + (map[name] || 'QT');
+  }
+
+  /** 前缀归属：这个前缀是哪个现存作业类型的（不认识的返回 null） */
+  function prefixOwner(type, prefix) {
+    var r = rule(type);
+    var map = tailMap(null);
+    var owner = null;
+    Object.keys(map).forEach(function (n) {
+      if (r.prefix + map[n] === prefix) owner = n;
+    });
+    return owner;
+  }
+
+  /** 示例编号（隐患 FZYH-0000001 / 作业票 FZDZ-0000001 …），只用于 placeholder 与错误提示 */
+  function sample(type, typeVal) {
     var r = rule(type);
     var len = seqRange(r).hi || 3;
     var n = '';
     for (var i = 0; i < len; i++) n += '0';
     n = n.slice(0, -1) + '1';
     var y = String(new Date().getFullYear());
-    return r.withYear === false ? (r.prefix + '-' + n) : (r.prefix + '-' + y + '-' + n);
+    var p = prefixOf(type, typeVal);
+    return r.withYear === false ? (p + '-' + n) : (p + '-' + y + '-' + n);
   }
 
   /** 把序号按位数补零（7 → 0000001；3 → 001） */
-  function padSeq(type, n) {
+  function padSeq(type, n, typeVal) {
     var r = rule(type);
     var len = seqRange(r).hi || 3;
     var s = String(n);
     while (s.length < len) s = '0' + s;
     var y = String(new Date().getFullYear());
-    return r.withYear === false ? (r.prefix + '-' + s) : (r.prefix + '-' + y + '-' + s);
+    var p = prefixOf(type, typeVal);
+    return r.withYear === false ? (p + '-' + s) : (p + '-' + y + '-' + s);
   }
 
-  /** 从一个编号里解析序号（按本类规则；老编号 / 别类编号返回 null） */
-  function seqOf(type, code) {
+  /** 从一个编号里解析序号（按本类当前前缀；别的类型 / 老编号返回 null） */
+  function seqOf(type, code, typeVal) {
     var r = rule(type);
     var v = String(code == null ? '' : code).trim().toUpperCase();
     if (!v) return null;
-    var p = escRe(r.prefix).toUpperCase();
+    var p = escRe(prefixOf(type, typeVal)).toUpperCase();
     var m = v.match(new RegExp('^' + p + '-(\\d{4})-(\\d+)$'));
     if (m) return (r.withYear === false) ? null : { year: m[1], seq: parseInt(m[2], 10) };
     m = v.match(new RegExp('^' + p + '-(\\d+)$'));
@@ -146,23 +256,24 @@ SD.code = (function () {
   /**
    * 生成下一个可用编号（新增表单的默认值，用户可手动修改）
    *  · 顺延：取本类型当前最大序号 + 1（带年份的只顺延今年的，过年自动归 1）
+   *    作业票按**当前作业类型的前缀**顺延，各前缀各自从 0000001 起
    *  · 跳撞号：生成的号若已存在（如手工插过号），继续往后找到第一个空位
-   *  · 老编号不参与顺延（HZ-2026-001、FZ-0000001 这类只做兼容放行）
+   *  · 老编号不参与顺延（HZ-2026-001、FZZY-0000001 这类只做兼容放行）
    */
-  function next(type) {
+  function next(type, typeVal) {
     var r = rule(type);
     var year = String(new Date().getFullYear());
     var maxSeq = 0;
     list(type).forEach(function (x) {
-      var p = seqOf(type, x && x.code);
+      var p = seqOf(type, x && x.code, typeVal);
       if (!p) return;
       if (r.withYear !== false && p.year !== year) return;
       if (p.seq > maxSeq) maxSeq = p.seq;
     });
     var n = maxSeq + 1;
     var guard = 0;
-    while (isDup(type, padSeq(type, n)) && guard++ < 10000) n++;
-    return padSeq(type, n);
+    while (isDup(type, padSeq(type, n, typeVal)) && guard++ < 10000) n++;
+    return padSeq(type, n, typeVal);
   }
 
   /** 该类型的记录池（优先用当前内存数据，真实接口模式下也能读到） */
@@ -189,10 +300,10 @@ SD.code = (function () {
   }
 
   /**
-   * 校验一个编号：空 / 格式 / 重复，返回错误文案；通过返回 null
-   * @param {string} type   单据类型（hazard / inspection / ...）
-   * @param {string} value  待校验值
-   * @param {object} opts   { id: 编辑中的记录 id（排除自身） }
+   * 校验一个编号：空 / 格式 / 类型与前缀是否对得上 / 重复，返回错误文案；通过返回 null
+   * @param {string} type    单据类型（hazard / inspection / ... / permit）
+   * @param {string} value   待校验值
+   * @param {object} opts    { id: 编辑中的记录 id（排除自身）, typeVal: 所属作业类型 }
    */
   function check(type, value, opts) {
     opts = opts || {};
@@ -201,13 +312,36 @@ SD.code = (function () {
 
     if (!v) return '「' + r.label + '」不能为空';
     if (v.length > 32) return '「' + r.label + '」不能超过 32 个字符（当前 ' + v.length + ' 个）';
-    if (!patternOf(type).test(v)) {
-      return '「' + r.label + '」格式应形如 ' + sample(type) + '，当前填写的是「' + v + '」';
+    if (!patternOf(type, opts.typeVal).test(v)) {
+      var tip = r.prefixFrom
+        ? (r.prefix + ' + 作业类型首字母 + 7 位序号，如 ' + sample(type, opts.typeVal))
+        : sample(type);
+      return '「' + r.label + '」格式应形如 ' + tip + '，当前填写的是「' + v + '」';
+    }
+    /* 动态前缀的软校验：前缀若是「另一个现存作业类型」的号，直接指出该用哪个；
+       不属于任何现存类型（旧号 FZZY、类型改名后的旧前缀）照常放行 */
+    if (r.prefixFrom) {
+      var mm = typeMismatch(type, v, opts.typeVal);
+      if (mm) return mm;
     }
     if (isDup(type, v, opts.id)) {
       return '「' + r.label + '」' + v + ' 已存在，请换一个';
     }
     return null;
+  }
+
+  /** 编号前缀与作业类型是否对得上（对不上返回提示文案，对得上返回 null） */
+  function typeMismatch(type, code, typeVal) {
+    var r = rule(type);
+    var m = /^([A-Z]+)-/.exec(String(code == null ? '' : code).trim().toUpperCase());
+    if (!m) return null;                                  // 一代老号（HZ-2026-001 等）不判
+    var p = m[1];
+    if (p === prefixOf(type, typeVal)) return null;
+    var owner = prefixOwner(type, p);
+    if (!owner) return null;                              // 非现存类型的前缀 → 放行
+    return '「' + r.label + '」' + code + ' 是「' + owner + '」的编号，当前作业类型是「' +
+      (typeVal || '—') + '」，应为 ' + prefixOf(type, typeVal) + '-…（如 ' +
+      sample(type, typeVal) + '）';
   }
 
   /** 生成 formDialog 的编号字段定义（各单据表单直接复用，保证行为一致） */
@@ -220,7 +354,7 @@ SD.code = (function () {
       codeType: type,
       required: true,
       placeholder: sample(type),
-      def: function () { return next(type); },   // 新增时预填下一个可用编号，可改
+      def: function (vals) { return next(type, r.prefixFrom ? vals && vals[r.prefixFrom] : null); },
       help: '默认顺延填入下一个可用编号，可手动修改；同一类型内不可重复，示例：' + sample(type)
     }, extra || {});
   }
@@ -247,6 +381,10 @@ SD.code = (function () {
     check: check,
     field: field,
     label: function (type) { return rule(type).label; },
-    assertUnique: assertUnique
+    assertUnique: assertUnique,
+    /* 动态前缀（作业票）对外接口，供表单提示与测试使用 */
+    prefixOf: prefixOf,
+    prefixOwner: prefixOwner,
+    permitNames: permitNames
   };
 })();

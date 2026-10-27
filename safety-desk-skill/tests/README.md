@@ -27,31 +27,33 @@ node tests/smoke_shift.js http://127.0.0.1:8126/index.html    # 终端 B
 
 ## 套件清单
 
-### 示例版（`examples/safety-desk`，共 1201 项）
+### 示例版（`examples/safety-desk`，共 1355 项）
 
 | 套件 | 项数 | 覆盖 |
 |---|---|---|
 | `smoke.js` | 67 | 页面骨架、导航、持久化、无 JS 报错 |
-| `smoke_code.js` | 102 | 单据编号：八类前缀/年份/位数、示例格式、表单预填、校验 |
+| `smoke_code.js` | 106 | 单据编号：八类前缀/年份/位数、示例格式、表单预填、校验 |
+| `smoke_permitcode.js` | 52 | 作业票动态编号：拼音首字母表、八类前缀、各前缀独立顺延、单字/英文/纯符号/撞车兜底、旧号放行、跨类型提示、表单联动 |
 | `smoke_crud.js` | 152 | 隐患 CRUD、状态流转、必填拦截、删除确认 |
-| `smoke_device.js` | 39 | 特种设备人员台账：78 人、日期规范化、搜索筛选排序、编号顺延 |
+| `smoke_device.js` | 44 | 特种设备人员台账：78 人、日期规范化、搜索筛选排序、编号顺延 |
 | `smoke_ops.js` | 37 | 「操作 ▾」下拉统一（逐板块校验） |
 | `smoke_photo.js` | 69 | 照片水印：两行文案、四档字号、压扁、绘制位置、空值降级 |
-| `smoke_photos.js` | 116 | 照片写入/看大图/作业票打印含证件照/Word 缩放 |
+| `smoke_photos.js` | 118 | 照片写入/看大图/作业票打印含证件照/Word 缩放 |
 | `smoke_print.js` | 133 | 整改通知书：版式、边框、分页、独立打印样式 |
 | `smoke_reports.js` | 64 | 日报/周报聚合口径与导出 |
 | `smoke_security.js` | 57 | 清空专用密码、30 分钟空闲锁、签名位 |
 | `smoke_settings.js` | 25 | 工作台名称自定义、侧栏快捷入口 |
-| `smoke_shift.js` | 153 | 交接班记录：19 行、打印留空、Excel 行位/合并/边框、角色门禁 |
+| `smoke_shift.js` | 155 | 交接班记录：19 行、打印留空、Excel 行位/合并/边框、角色门禁 |
 | `smoke_special.js` | 33 | 特种作业导航层级、权限门禁、作业票流转 |
 | `smoke_training.js` | 34 | 培训照片与证书 |
 | `smoke_trend.js` | 25 | 各部门趋势：12 个月窗口、兜底口径自洽 |
 | `smoke_vault.js` | 29 | 不压缩 + IndexedDB 外置 + 上传护栏 |
 | `smoke_ocr.js` | 66 | 证件识别解析器 + 接口兜底 + 界面端到端 |
 
-### 空白版（`examples/safety-desk-blank`，共 554 项）
+### 空白版（`examples/safety-desk-blank`，共 697 项）
 
-`smoke_blank`(136) / `smoke_shift`(153) / `smoke_security`(57) / `smoke_device`(44) / `smoke_photo`(69) / `smoke_ocr`(66) / `smoke_vault`(29)
+`smoke_blank`(136) / `smoke_permitcode`(52) / `smoke_device`(44) / `smoke_excelio`(89) /
+`smoke_shift`(155) / `smoke_security`(57) / `smoke_photo`(69) / `smoke_ocr`(66) / `smoke_vault`(29)
 
 ### 骨架（`assets/skeleton`，19 项）
 

@@ -49,16 +49,20 @@ SD.CONFIG = {
        · training    培训编号     FZPX-2026-001  带年份 · 序号 3 位
        · certificate 证书编号     ZGZS-001       ★ 2026-10-25 按用户口径确定：无年份 · 序号 3 位
        · notice      通知编号     FZTG-2026-001  带年份 · 序号 3 位
-       · permit      作业票编号   FZZY-0000001   无年份 · 序号 7 位
+       · permit      作业票编号   FZ+类型首字母-0000001  ★ 2026-10-28 起按作业类型动态生成
+                                  （吊装作业 → FZDZ-0000001、动火作业 → FZDH-0000001）
        · special     人员编号     TZZY-001       无年份 · 序号 3 位
        编号由用户掌控：新增表单**默认顺延填入下一个可用编号**（可手动改，
        清空手填也行），保存时校验「非空 + 格式 + 同类型唯一」，不再自动补号；
-       各类型序号池仍彼此独立（隐患 FZYH-0000001 与作业票 FZZY-0000001 互不影响）。
-       存量老编号（HZ-2026-001 / CT-001 / FZ-0000001 这类）仍可原样保存，属兼容放行（2026-10-25 前的证书号 FZ-0000001 也在这条里，换号前不会报错），
+       各类型序号池仍彼此独立（隐患 FZYH-0000001 与作业票 FZDZ-0000001 互不影响）。
+       存量老编号（HZ-2026-001 / CT-001 / FZ-0000001 / 旧作业票 FZZY-0000001 这类）
+       仍可原样保存，属兼容放行（2026-10-25 前的证书号 FZ-0000001 也在这条里，换号前不会报错），
        建议在日常维护中逐步换成新号（改号只影响展示与检索，不影响统计）。
 
      每个规则的字段：
-       prefix      前缀，如 'FZYH'
+       prefix      前缀，如 'FZYH'；作业票填固定部分 'FZ'（后面按类型动态接）
+       prefixFrom  可选：动态前缀取自记录里的哪个字段（作业票填 'type'）。
+                   配了它就不再是固定前缀，改为「prefix + 类型名首字母」，见 code.js
        label       表单上的字段名与错误提示用语
        withYear    true=「前缀-年-序号」，false=「前缀-序号」
        seqLen      序号位数（7 → 0000001；3 → 001），同时作为校验的位数
@@ -66,6 +70,13 @@ SD.CONFIG = {
        allowNoYear 可选：额外允许「无年份」的历史写法
        allowLegacy 可选：默认 true，放行 HZ-2026-001 / FZ-0000001 这类老编号；置 false 则只认新号
        pattern     可选：显式正则字符串，给了就不按上面几项自动拼 */
+
+  /* 作业票动态前缀的规则细节（写在 code.js 的注释里，这里只留摘要）：
+     · 前缀 = FZ + 作业类型前两个汉字的拼音首字母（吊装作业 → DZ → FZDZ）
+     · 单字类型只取 1 位（焊 → H → FZH）；无汉字（LOTO）取字母；取不到 → QT
+     · 首字母撞车（受限空间 / 射线探伤 / 水下 都是 SX）：字典里先登记者占 FZSX，
+       后来者依次延长取第 3、第 4 位（FZSXT / FZSXZ），整名仍相同再加序号（FZSX2）
+     · 改作业类型名 → 前缀随之变，旧号仍能存（不属于现存类型即放行） */
   codeRules: {
     hazard:      { prefix: 'FZYH', label: '隐患编号',   withYear: false, seqLen: 7 },
     inspection:  { prefix: 'FZXJ', label: '巡检编号',   withYear: true,  seqLen: 3 },
@@ -73,7 +84,7 @@ SD.CONFIG = {
     certificate: { prefix: 'ZGZS', label: '证书编号',   withYear: false, seqLen: 3 },
     notice:      { prefix: 'FZTG', label: '通知编号',   withYear: true,  seqLen: 3 },
     special:     { prefix: 'TZZY', label: '人员编号',   withYear: false, seqLen: 3 },
-    permit:      { prefix: 'FZZY', label: '作业票编号', withYear: false, seqLen: 7 },
+    permit:      { prefix: 'FZ', prefixFrom: 'type', label: '作业票编号', withYear: false, seqLen: 7 },
     device:      { prefix: 'TZSB', label: '设备人员编号', withYear: false, seqLen: 3 }
   },
 

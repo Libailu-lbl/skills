@@ -4,7 +4,9 @@
         → 编辑时不改号不被自己拦 → 各类型编号体系互不干扰 → 历史格式兼容（两代老号）
         → 数据层兜底（空号拒收/撞号拒收）→ 导入校验 → 配置可改（前缀/位数）
    ★ 2026-10-24 起七类各用各的编号：FZYH-0000001 / FZXJ-2026-001 / FZPX-2026-001 /
-     FZTG-2026-001 / FZZY-0000001 / TZZY-001 / 证书 ZGZS-001（2026-10-25 定）
+     FZTG-2026-001 / TZZY-001 / 证书 ZGZS-001（2026-10-25 定）
+   ★ 2026-10-28 起作业票前缀按作业类型动态生成：
+     FZ + 类型名前两字拼音首字母 + 7 位序号（吊装作业 → FZDZ-0000001）
    ★ 2026-10-24 起编号「默认顺延填入下一个可用编号，仍可手动修改」：
      新增表单预填 SD.code.next(type)（最大序号 +1，撞号跳过，带年份的按年归 1），
      保存仍走「空 / 格式 / 同类型唯一」三道校验，数据层不自动补号。
@@ -92,11 +94,14 @@ function ok(name, cond, extra) {
     certificate: { prefix: 'ZGZS', withYear: false, seqLen: 3, sample: 'ZGZS-001' },
     notice:      { prefix: 'FZTG', withYear: true,  seqLen: 3, sample: 'FZTG-' + Y + '-001' },
     special:     { prefix: 'TZZY', withYear: false, seqLen: 3, sample: 'TZZY-001' },
-    permit:      { prefix: 'FZZY', withYear: false, seqLen: 7, sample: 'FZZY-0000001' }
+    permit:      { prefix: 'FZ', prefixFrom: 'type', withYear: false, seqLen: 7, sample: 'FZDH-0000001' }
   };
-  ok('八类前缀各按各的体系（FZYH/FZXJ/FZPX/ZGZS/FZTG/TZZY/FZZY/TZSB）',
+  ok('八类前缀各按各的体系（FZYH/FZXJ/FZPX/ZGZS/FZTG/TZZY/FZ(+类型)/TZSB）',
     TYPES.every(t => SD.CONFIG.codeRules[t].prefix === EXPECT[t].prefix),
     TYPES.map(t => t + '=' + SD.CONFIG.codeRules[t].prefix).join(' '));
+  ok('作业票前缀挂了动态来源（prefixFrom = 作业类型字段 type）',
+    SD.CONFIG.codeRules.permit.prefixFrom === 'type',
+    JSON.stringify(SD.CONFIG.codeRules.permit));
   ok('带年份的三类：巡检/培训/通知（前缀-年-序号）',
     ['inspection', 'training', 'notice'].every(t => SD.CONFIG.codeRules[t].withYear === true));
   ok('不带年份的四类：隐患/证书/人员/作业票（前缀-序号）',
@@ -117,8 +122,10 @@ function ok(name, cond, extra) {
     SD.code.next('inspection') === 'FZXJ-' + Y + '-010', SD.code.next('inspection'));
   ok('隐患 next 顺延到 FZYH-0000013（示例池 12 条）',
     SD.code.next('hazard') === 'FZYH-0000013', SD.code.next('hazard'));
-  ok('作业票 next 顺延到 FZZY-0000009（示例池 8 条）',
-    SD.code.next('permit') === 'FZZY-0000009', SD.code.next('permit'));
+  ok('作业票 next 按类型前缀顺延（动火 FZDH 已有 1 条 → 0000002）',
+    SD.code.next('permit', '动火作业') === 'FZDH-0000002', SD.code.next('permit', '动火作业'));
+  ok('作业票别的类型各从 0000001 起（吊装 FZDZ 已有 1 条 → 0000002）',
+    SD.code.next('permit', '吊装作业') === 'FZDZ-0000002', SD.code.next('permit', '吊装作业'));
   ok('人员 next 顺延到 TZZY-009（示例池 8 条）',
     SD.code.next('special') === 'TZZY-009', SD.code.next('special'));
   ok('培训 next 顺延到 FZPX-' + Y + '-005（示例池 4 条）',
@@ -180,17 +187,20 @@ function ok(name, cond, extra) {
 
   console.log('== 3. 各类型编号体系互不干扰（池子各自独立） ==');
   ok('隐患号在隐患池里判重', SD.code.isDup('hazard', 'FZYH-0000001') === true);
-  ok('作业票号在作业票池里判重', SD.code.isDup('permit', 'FZZY-0000001') === true);
+  ok('作业票号在作业票池里判重', SD.code.isDup('permit', 'FZDH-0000001') === true);
   ok('巡检号在巡检池里判重', SD.code.isDup('inspection', 'FZXJ-' + Y + '-001') === true);
   ok('人员号在人员池里判重', SD.code.isDup('special', 'TZZY-001') === true);
   ok('第 9 号只在隐患池（作业票只有 8 条）→ 作业票池不判重',
-    SD.code.isDup('hazard', 'FZYH-0000009') === true && SD.code.isDup('permit', 'FZZY-0000009') === false);
+    SD.code.isDup('hazard', 'FZYH-0000009') === true && SD.code.isDup('permit', 'FZDH-0000009') === false);
   ok('两类池子彼此独立（互不借号、互不撞号）',
-    SD.code.isDup('permit', 'FZZY-0000012') === false && SD.code.isDup('hazard', 'FZYH-0000012') === true);
+    SD.code.isDup('permit', 'FZDH-0000012') === false && SD.code.isDup('hazard', 'FZYH-0000012') === true);
 
   console.log('== 4. 历史数据格式兼容（老编号仍可保存） ==');
   ok('一代老编号 HZ-2026-001 可过', SD.code.patternOf('hazard').test('HZ-2026-001'));
   ok('一代老编号 WP-2026-041 可过', SD.code.patternOf('permit').test('WP-2026-041'));
+  ok('旧作业票通用号 FZZY-0000001（2026-10-24 版）仍可过', SD.code.patternOf('permit').test('FZZY-0000001'));
+  ok('作业票旧前缀不算「别的类型」→ check 不拦', SD.code.check('permit', 'FZZY-0000009', { typeVal: '吊装作业' }) === null,
+    SD.code.check('permit', 'FZZY-0000009', { typeVal: '吊装作业' }));
   ok('一代老编号 CT-001（无年份）可过', SD.code.patternOf('certificate').test('CT-001'));
   ok('一代老编号 TR-2026-09（两位序号）可过', SD.code.patternOf('training').test('TR-2026-09'));
   ok('二代老编号 FZ-0000001（10-22 统一期）可过', SD.code.patternOf('hazard').test('FZ-0000001'));
@@ -200,7 +210,7 @@ function ok(name, cond, extra) {
   const RE = {
     hazards: /^FZYH-\d{7}$/, inspections: /^FZXJ-\d{4}-\d{3}$/, trainings: /^FZPX-\d{4}-\d{3}$/,
     certificates: /^ZGZS-\d{3}$/, notices: /^FZTG-\d{4}-\d{3}$/,
-    specialPersonnel: /^TZZY-\d{3}$/, workPermits: /^FZZY-\d{7}$/
+    specialPersonnel: /^TZZY-\d{3}$/, workPermits: /^FZ[A-Z]{2}-\d{7}$/
   };
   const allNew = POOLS.every(k => (SD.app.state.summary[k] || []).length > 0 &&
     (SD.app.state.summary[k] || []).every(x => RE[k].test(x.code || '')));

@@ -428,30 +428,30 @@ SD.mock = (function () {
     var T = U.today();
     function d(off) { return U.shift(T, off); }
     var raw = [
-      { code: 'FZZY-0000001', type: '动火作业', location: 'B 区焊接工位', dept: '生产二部', applicant: '王磊', leader: '王磊', guardian: '孙浩', risk: '火灾、灼伤、有毒烟气', measures: '清理周边可燃物 10m、配灭火器 2 具、开具动火证、设专人监护', planStart: d(0), planEnd: d(0), status: 'pending', approvedBy: '', approvedAt: '', remark: '储罐区管线切割' },
-      { code: 'FZZY-0000002', type: '受限空间作业', location: '污水处理站', dept: '生产一部', applicant: '赵敏', leader: '赵敏', guardian: '王安全', risk: '缺氧、有毒气体、淹溺', measures: '作业前通风 30min、气体检测合格、佩戴防毒面具、连续监护', planStart: d(0), planEnd: d(0), status: 'approved', approvedBy: '王安全', approvedAt: d(0) + ' 08:30', remark: '污水池清淤' },
-      { code: 'FZZY-0000003', type: '高处作业', location: '3 号厂房屋面', dept: '工程项目部', applicant: '郑凯', leader: '郑凯', guardian: '孙浩', risk: '高处坠落', measures: '系挂安全带、设 1.2m 临边防护、禁止抛掷', planStart: d(1), planEnd: d(1), status: 'draft', approvedBy: '', approvedAt: '', remark: '屋面防水施工' },
-      { code: 'FZZY-0000004', type: '临时用电作业', location: '成品库改造区', dept: '设备动力部', applicant: '李强', leader: '李强', guardian: '周芳', risk: '触电、短路起火', measures: '三级配电两级保护、电缆架空或穿管、电工持证接线', planStart: d(-1), planEnd: d(2), status: 'working', approvedBy: '王安全', approvedAt: d(-1) + ' 09:00', remark: '临时照明布线' },
-      { code: 'FZZY-0000005', type: '吊装作业', location: 'B 区设备平台', dept: '生产二部', applicant: '王磊', leader: '王磊', guardian: '孙浩', risk: '物体打击、起重伤害', measures: '吊具检查、设警戒区、指挥持证、风速 ≤6 级', planStart: d(-3), planEnd: d(-3), status: 'done', approvedBy: '王安全', approvedAt: d(-3) + ' 08:00', remark: '行车电机吊装' },
-      { code: 'FZZY-0000006', type: '盲板抽堵作业', location: '化学品库管道', dept: '化学品库', applicant: '吴斌', leader: '吴斌', guardian: '赵敏', risk: '物料泄漏、中毒', measures: '确认管线泄压、佩戴防护、双人确认盲板编号', planStart: d(-2), planEnd: d(-2), status: 'done', approvedBy: '王安全', approvedAt: d(-2) + ' 10:00', remark: '溶剂管线检修' },
-      { code: 'FZZY-0000007', type: '动土作业', location: '厂区西侧管沟', dept: '工程项目部', applicant: '郑凯', leader: '郑凯', guardian: '李强', risk: '破坏地下管线、坍塌', measures: '探明地下管线、设边坡支护、夜间警示', planStart: d(5), planEnd: d(6), status: 'draft', approvedBy: '', approvedAt: '', remark: '新增给水管沟' },
-      { code: 'FZZY-0000008', type: '断路作业', location: '厂区主干道', dept: '仓储物流部', applicant: '孙浩', leader: '孙浩', guardian: '周芳', risk: '车辆伤害、交通中断', measures: '设交通导改、夜间警示灯、专人引导', planStart: d(-1), planEnd: d(-1), status: 'void', approvedBy: '', approvedAt: '', remark: '计划取消，改走北侧通道' }
+      { code: 'FZDH-0000001', type: '动火作业', location: 'B 区焊接工位', dept: '生产二部', applicant: '王磊', leader: '王磊', guardian: '孙浩', risk: '火灾、灼伤、有毒烟气', measures: '清理周边可燃物 10m、配灭火器 2 具、开具动火证、设专人监护', planStart: d(0), planEnd: d(0), status: 'pending', approvedBy: '', approvedAt: '', remark: '储罐区管线切割' },
+      { code: 'FZSX-0000001', type: '受限空间作业', location: '污水处理站', dept: '生产一部', applicant: '赵敏', leader: '赵敏', guardian: '王安全', risk: '缺氧、有毒气体、淹溺', measures: '作业前通风 30min、气体检测合格、佩戴防毒面具、连续监护', planStart: d(0), planEnd: d(0), status: 'approved', approvedBy: '王安全', approvedAt: d(0) + ' 08:30', remark: '污水池清淤' },
+      { code: 'FZGC-0000001', type: '高处作业', location: '3 号厂房屋面', dept: '工程项目部', applicant: '郑凯', leader: '郑凯', guardian: '孙浩', risk: '高处坠落', measures: '系挂安全带、设 1.2m 临边防护、禁止抛掷', planStart: d(1), planEnd: d(1), status: 'draft', approvedBy: '', approvedAt: '', remark: '屋面防水施工' },
+      { code: 'FZLS-0000001', type: '临时用电作业', location: '成品库改造区', dept: '设备动力部', applicant: '李强', leader: '李强', guardian: '周芳', risk: '触电、短路起火', measures: '三级配电两级保护、电缆架空或穿管、电工持证接线', planStart: d(-1), planEnd: d(2), status: 'working', approvedBy: '王安全', approvedAt: d(-1) + ' 09:00', remark: '临时照明布线' },
+      { code: 'FZDZ-0000001', type: '吊装作业', location: 'B 区设备平台', dept: '生产二部', applicant: '王磊', leader: '王磊', guardian: '孙浩', risk: '物体打击、起重伤害', measures: '吊具检查、设警戒区、指挥持证、风速 ≤6 级', planStart: d(-3), planEnd: d(-3), status: 'done', approvedBy: '王安全', approvedAt: d(-3) + ' 08:00', remark: '行车电机吊装' },
+      { code: 'FZMB-0000001', type: '盲板抽堵作业', location: '化学品库管道', dept: '化学品库', applicant: '吴斌', leader: '吴斌', guardian: '赵敏', risk: '物料泄漏、中毒', measures: '确认管线泄压、佩戴防护、双人确认盲板编号', planStart: d(-2), planEnd: d(-2), status: 'done', approvedBy: '王安全', approvedAt: d(-2) + ' 10:00', remark: '溶剂管线检修' },
+      { code: 'FZDT-0000001', type: '动土作业', location: '厂区西侧管沟', dept: '工程项目部', applicant: '郑凯', leader: '郑凯', guardian: '李强', risk: '破坏地下管线、坍塌', measures: '探明地下管线、设边坡支护、夜间警示', planStart: d(5), planEnd: d(6), status: 'draft', approvedBy: '', approvedAt: '', remark: '新增给水管沟' },
+      { code: 'FZDL-0000001', type: '断路作业', location: '厂区主干道', dept: '仓储物流部', applicant: '孙浩', leader: '孙浩', guardian: '周芳', risk: '车辆伤害、交通中断', measures: '设交通导改、夜间警示灯、专人引导', planStart: d(-1), planEnd: d(-1), status: 'void', approvedBy: '', approvedAt: '', remark: '计划取消，改走北侧通道' }
     ];
     // 作业人员：谁进场干活（一组人，不像申请人那样只有一个）
     var workersMap = {
-      'FZZY-0000001': ['王磊', '孙浩'],
-      'FZZY-0000002': ['赵敏', '王安全'],
-      'FZZY-0000003': ['郑凯'],
-      'FZZY-0000004': ['李强', '周芳'],
-      'FZZY-0000005': ['王磊', '孙浩', '郑凯'],
-      'FZZY-0000006': ['吴斌'],
-      'FZZY-0000007': ['郑凯', '李强'],
-      'FZZY-0000008': ['孙浩']
+      'FZDH-0000001': ['王磊', '孙浩'],
+      'FZSX-0000001': ['赵敏', '王安全'],
+      'FZGC-0000001': ['郑凯'],
+      'FZLS-0000001': ['李强', '周芳'],
+      'FZDZ-0000001': ['王磊', '孙浩', '郑凯'],
+      'FZMB-0000001': ['吴斌'],
+      'FZDT-0000001': ['郑凯', '李强'],
+      'FZDL-0000001': ['孙浩']
     };
     // 示例现场照片：只给两张票，便于看到「照片专区 + 点击查看」
     var photoMap = {
-      'FZZY-0000001': [samplePhoto('示例 · 动火作业面', 640, 480), samplePhoto('示例 · 灭火器配备', 640, 480)],
-      'FZZY-0000004': [samplePhoto('示例 · 临时配电箱', 640, 480), samplePhoto('示例 · 电缆架空', 640, 480), samplePhoto('示例 · 接地检测', 640, 480)]
+      'FZDH-0000001': [samplePhoto('示例 · 动火作业面', 640, 480), samplePhoto('示例 · 灭火器配备', 640, 480)],
+      'FZLS-0000001': [samplePhoto('示例 · 临时配电箱', 640, 480), samplePhoto('示例 · 电缆架空', 640, 480), samplePhoto('示例 · 接地检测', 640, 480)]
     };
     return raw.map(function (r, i) {
       r.id = 'WP' + (7000 + i);

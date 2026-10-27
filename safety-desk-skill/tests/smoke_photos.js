@@ -20,7 +20,6 @@ function appFile(rel) {
 }
 function readAppFile(rel) { return __fs0.readFileSync(appFile(rel), 'utf8'); }
 
-
 /* stored（不压缩）ZIP 解包：docxWriter 产出的条目都是 stored，读本地头即可 */
 function unzipStored(buf) {
   const out = {};
@@ -129,7 +128,7 @@ function ok(name, cond, extra) {
 
   // 填必填项后提交（编号 2026-10-21 起为手动必填）
   const set = (id, v) => { const e = m.querySelector('#' + id); if (e) e.value = v; };
-  set('ff_code', 'FZZY-0000901');
+  set('ff_code', 'FZDH-0000901');
   set('ff_location', '冒烟测试工位');
   set('ff_dept', '安环部');
   set('ff_applicant', '王安全');
@@ -314,7 +313,7 @@ function ok(name, cond, extra) {
   console.log('== 8. 作业票照片打印页：自动带出作业人员证件照 ==');
   const PP = SD.comp.printPhotos;
   const people = SD.app.state.summary.specialPersonnel;
-  const wp = SD.app.state.summary.workPermits.find(p => p.code === 'FZZY-0000001');
+  const wp = SD.app.state.summary.workPermits.find(p => p.code === 'FZDH-0000001');
   ok('示例作业票有作业人员 + 现场照片', !!wp && (wp.workers || []).length > 0 && (wp.photos || []).length > 0,
     wp && ((wp.workers || []).join('/') + ' | ' + (wp.photos || []).length + ' 张'));
 

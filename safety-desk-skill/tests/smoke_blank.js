@@ -188,8 +188,8 @@ function ok(name, cond, extra) {
   ok('发布通知成功', !!nt && nt.code === 'FZTG-' + Y + '-001', nt && nt.code);
   const sp = await SD.api.createSpecialPersonnel({ code: 'TZZY-001', name: '冒烟-证人', dept: '生产一部', category: '电工作业', operation: '低压电工作业', certNo: 'T-TEST-001', issuer: '市应急管理局', validFrom: T, validTo: SD.utils.shift(T, 300), reviewDate: SD.utils.shift(T, 300), status: 'valid' });
   ok('新增特种作业人员成功', !!sp && sp.code === 'TZZY-001', sp && sp.code);
-  const wp = await SD.api.createWorkPermit({ code: 'FZZY-0000001', type: '动火作业', location: 'B 区', dept: '生产二部', applicant: '测试员', leader: '测试员', guardian: '监护人', workers: ['测试员'], risk: '火灾', measures: '配灭火器', planStart: T, planEnd: T, status: 'draft' });
-  ok('新增作业票成功', !!wp && wp.code === 'FZZY-0000001', wp && wp.code);
+  const wp = await SD.api.createWorkPermit({ code: 'FZDH-0000001', type: '动火作业', location: 'B 区', dept: '生产二部', applicant: '测试员', leader: '测试员', guardian: '监护人', workers: ['测试员'], risk: '火灾', measures: '配灭火器', planStart: T, planEnd: T, status: 'draft' });
+  ok('新增作业票成功', !!wp && wp.code === 'FZDH-0000001', wp && wp.code);
   await SD.app.reload();
   ok('五类记录全部落库', n('inspections') === 1 && n('trainings') === 1 && n('notices') === 1 &&
     n('specialPersonnel') === 1 && n('workPermits') === 1);

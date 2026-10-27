@@ -47,7 +47,9 @@
 codeRules: {
   hazard:      { prefix:'FZYH', label:'隐患编号', withYear:false, seqLen:7 },  // FZYH-0000001
   inspection:  { prefix:'FZXJ', label:'巡检编号', withYear:true,  seqLen:3 },  // FZXJ-2026-001
-  certificate: { prefix:'ZGZS', label:'证书编号', withYear:false, seqLen:3 }   // ZGZS-001
+  certificate: { prefix:'ZGZS', label:'证书编号', withYear:false, seqLen:3 },  // ZGZS-001
+  permit:      { prefix:'FZ', prefixFrom:'type', label:'作业票编号',
+                 withYear:false, seqLen:7 }                                    // FZDZ-0000001（吊装）
 }
 ```
 
@@ -61,6 +63,23 @@ codeRules: {
 | `allowNoYear` | 可选：额外允许「无年份」的历史写法 |
 | `allowLegacy` | 默认 `true`；`false` = 只认新号，老号直接拒 |
 | `pattern` | 可选：显式正则，给了就不按上面几项自动拼 |
+| `prefixFrom` | 可选：**动态前缀**——取记录里哪个字段的值来生成前缀（作业票填 `'type'`）。配了它，`prefix` 只当固定头，后面按「类型名前两字拼音首字母」自动接 |
+
+### 动态前缀（`prefixFrom`，作业票用）
+
+配了 `prefixFrom` 后，完整前缀 = `prefix` + 类型名首字母，例如 `FZ` + `DZ`（吊装）= `FZDZ`：
+
+- 首字母来自 `assets/js/pinyin.js`（GB2312 一二级 6763 字离线字表）；
+  要换数据源：`pip install pypinyin && python scripts/gen_pinyin_js.py` 重新生成，
+  然后必须回归 `node tests/smoke_permitcode.js`（八类首字母必须仍是 DH/SX/MB/GC/DZ/LS/DT/DL）
+- 序号按**前缀各自独立**顺延（`FZDZ-0000001` 与 `FZDH-0000001` 并存）
+- 撞车按字典顺序先到先得，后来者延长取第 3、4 字（受限空间 `FZSX` / 射线探伤 `FZSXT` / 水下 `FZSXZ`），
+  整名仍同则加序号（`FZH` / `FZH2`）
+- 校验放宽为 `FZ + 1~6 位大写字母 + 7 位数字`，并加一条软校验：前缀若属**另一个现存类型**才拦
+  （点名应填哪个），旧号与改名后的旧前缀放行
+- 想改回固定前缀：删掉 `prefixFrom`、把 `prefix` 写成完整前缀（如 `'FZZY'`）即可
+
+详见 `examples/safety-desk/data/schema.md` 的「危险作业票：前缀按作业类型动态生成」。
 
 ---
 

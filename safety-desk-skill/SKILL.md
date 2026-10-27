@@ -6,7 +6,7 @@ description: 搭建「离线优先的个人业务工作台」HTML 应用的完�
 # 安全员工作台 · 搭建 SKILL
 
 > 一个「双击 index.html 就能用、断网不崩、能打印能导出、别人克隆就能改」的业务工作台，是怎么一步步做出来的。
-> 本 SKILL 提炼自一套 48 个 JS 文件、1201 项自检全绿的实际项目（`examples/safety-desk`）。
+> 本 SKILL 提炼自一套 49 个 JS 文件、1355 项自检全绿的实际项目（`examples/safety-desk`）。
 
 ---
 
@@ -114,6 +114,7 @@ assets/js/
 ├── utils.js           纯工具（无状态）
 ├── auth.js            角色与密码
 ├── store.js           localStorage 读写 + 导出/导入/清空
+├── pinyin.js          汉字拼音首字母表（动态编号前缀用，离线字表）
 ├── code.js            单据编号规则
 ├── dataSource.js      数据访问层（mock / real 可切换）
 ├── metrics.js         计算层（纯函数，只读数据）
@@ -252,7 +253,7 @@ SD.CONFIG = {
 };
 ```
 
-真实项目里另外还有（见 `references/config-reference.md`）：`codeRules`（单据编号前缀/位数）、`ocr`（识别接口）、`watermark`（水印默认值）、`photo`（压缩开关/单张上限）、`shiftLog`（固定厂区/部门/班次）。
+真实项目里另外还有（见 `references/config-reference.md`）：`codeRules`（单据编号前缀/位数，含 `prefixFrom` 动态前缀）、`ocr`（识别接口）、`watermark`（水印默认值）、`photo`（压缩开关/单张上限）、`shiftLog`（固定厂区/部门/班次）。
 
 ---
 
@@ -334,7 +335,7 @@ python scripts/compare_xlsx.py 原表.xlsx 导出件.xlsx
 | `references/testing.md` | jsdom 自检 + 真打印取证的写法与坑 |
 | `references/pitfalls.md` | **20 条实测踩坑**（先看这个，能省两天） |
 | `assets/skeleton/` | 可运行的最小骨架（19 项自检全绿） |
-| `examples/safety-desk/` | 完整示例：48 个 JS、9 个模块、1201 项自检 |
+| `examples/safety-desk/` | 完整示例：49 个 JS、9 个模块、1355 项自检 |
 
 ---
 

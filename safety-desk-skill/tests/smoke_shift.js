@@ -132,7 +132,7 @@ function ok(name, cond, extra) {
     view().querySelectorAll('.sl-head th')[4].textContent);
   const logo = view().querySelector('.sl-logo');
   ok('界面左上角有公司标识', !!logo, logo && logo.getAttribute('src'));
-  ok('标识引用本地图片（离线可用）', logo && /assets\/img\/mily-logo.png/.test(logo.getAttribute('src')),
+  ok('标识引用本地图片（离线可用）', logo && /assets\/img\/logo.png/.test(logo.getAttribute('src')),
     logo && logo.getAttribute('src'));
 
   /* ---------- 4. 密码解锁 ---------- */

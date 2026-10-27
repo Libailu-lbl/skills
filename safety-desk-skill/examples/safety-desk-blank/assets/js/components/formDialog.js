@@ -33,7 +33,11 @@
      · codeType : 单据类型（hazard / inspection / training / certificate /
                    notice / special / permit），决定校验正则与顺延规则
      · selfId   : 编辑时传当前记录 id，唯一性校验会排除自己
-     · 校验     : 内置走 SD.code.check —— 空 / 格式 / 同类重复 三类错误
+     · dependsOn: 编号随哪个字段变（作业票填 'type'）。打开时按当前值预填；
+                  该字段一改，只要编号还是「自动值 / 空」就跟着换前缀，
+                  用户手改过的号不覆盖；编辑老记录不改号
+     · 校验     : 内置走 SD.code.check —— 空 / 格式 / 同类重复（作业票额外查
+                  「前缀是不是别的作业类型的号」）三类错误
      规则表在 config.js 的 SD.CONFIG.codeRules，改前缀改位数只改那一处。
 
    用法：
@@ -51,11 +55,12 @@ SD.comp = SD.comp || {};
 SD.comp.formDialog = (function () {
   var U = SD.utils;
 
-  /** 取字段初始值：优先用传入的 values，其次 def（可为函数）。
-      编号字段新增时没有传入值，走 def → SD.code.next 顺延生成下一个可用编号。 */
+  /** 取字段初始值：优先用传入的 values，其次 def（可为函数，入参是当前值对象）。
+      编号字段新增时没有传入值，走 def → SD.code.next 顺延生成下一个可用编号；
+      作业票的编号 def 还要看「作业类型」，所以把 values 传进去。 */
   function initial(field, values) {
     var v = (values && values[field.name] != null) ? values[field.name] : null;
-    if (v == null) v = (typeof field.def === 'function') ? field.def() : field.def;
+    if (v == null) v = (typeof field.def === 'function') ? field.def(values || {}) : field.def;
     return v == null ? '' : v;
   }
 
@@ -160,7 +165,11 @@ SD.comp.formDialog = (function () {
       if (empty) continue;
       // 编号：空 / 格式 / 同类型重复，统一交给 SD.code.check（七类单据同一套判定）
       if (f.type === 'code' && SD.code) {
-        var cm = SD.code.check(f.codeType || f.name, v, { id: f.selfId });
+        var cm = SD.code.check(f.codeType || f.name, v, {
+          id: f.selfId,
+          /* 动态前缀（作业票）要拿「当前选的作业类型」算应得前缀 */
+          typeVal: f.dependsOn ? values[f.dependsOn] : null
+        });
         if (cm) return cm;
         continue;
       }
@@ -209,6 +218,35 @@ SD.comp.formDialog = (function () {
               max: f.max || 8
             });
           }
+        });
+        /* 编号跟着另一个字段走（作业票：编号随「作业类型」变前缀）
+           · 只改「还是自动值 / 空」的输入框，用户手改过的号不覆盖
+           · 编辑老记录时不动它，避免一打开就被改成新前缀 */
+        fields.forEach(function (f) {
+          if (f.type !== 'code') return;
+          var me = modal.querySelector('#ff_' + f.name);
+          if (!me) return;
+          /* 失焦归一：编号一律大写去空格（手打小写 fzdz-xxx 也能存成 FZDZ-xxx） */
+          me.addEventListener('blur', function () {
+            var uv = String(me.value || '').trim().toUpperCase();
+            if (uv !== me.value) me.value = uv;
+          });
+          if (!f.dependsOn) return;
+          /* 编辑已有记录时不再联动：老票的号是既成事实，切类型不静默改号
+             （真要不符，保存时 check 会提示应换哪个前缀，由人决定） */
+          if (o.values && o.values[f.name] != null) return;
+          var depEl = modal.querySelector('#ff_' + f.dependsOn);
+          if (!depEl || me.readOnly) return;
+          var last = me.value;
+          depEl.addEventListener('change', function () {
+            var vals = readValues(modal, fields, o.values);
+            var nv = (typeof f.def === 'function') ? f.def(vals) : f.def;
+            if (!nv) return;
+            if (me.value === last || me.value === '') {
+              me.value = nv;
+              last = nv;
+            }
+          });
         });
         if (typeof o.onMount === 'function') o.onMount(modal);
       },
