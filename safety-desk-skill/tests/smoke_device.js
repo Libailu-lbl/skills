@@ -48,62 +48,63 @@ const ok = (n, c, x) => { if (c) { pass++; console.log('  PASS ' + n + (x != nul
   ok('页面标题是「特种设备人员」', /特种设备人员/.test(doc.getElementById('viewTitle').textContent),
     doc.getElementById('viewTitle').textContent);
 
-  console.log('== B. 数据完整性 ==');
+  console.log('== B. 数据完整性（2026-10-27 起数据由 Excel 导入，不再内置名单）==');
+  const XIO_D = SD.views.devicePersonnel.XIO;
+  ok('视图暴露了导入配置（XIO）', !!XIO_D && XIO_D.fields.length > 0, XIO_D && XIO_D.fields.length);
+  ok('预置名单已移除（SD.deviceSeed 不存在）', typeof SD.deviceSeed === 'undefined', typeof SD.deviceSeed);
+
+  const btnsB = Array.from(doc.querySelectorAll('#view button'));
+  ok('「载入内置名单」按钮已移除', !btnsB.some(x => /载入内置名单/.test(x.textContent)));
+  ok('空台账时有「导入 Excel」入口', btnsB.some(x => /导入 Excel/.test(x.textContent)));
+
+  /* 造 78 条，走**真实导入链路**（_analyze → _doImport），顺带验证导入本身 */
+  const HEAD = ['姓名', '工号', '所属部门', '岗位', '证书类型', '证件编号', '证书有效期至', '联系方式', '备注'];
+  const rowsIn = [HEAD];
+  for (let i = 1; i <= 78; i++) {
+    rowsIn.push([
+      '测试' + i,
+      String(10000 + i),                                  /* 工号按文本，保留位数 */
+      '仓储物流部',
+      '叉车班',
+      'N1',
+      '32068219900101' + String(1000 + i) + (i === 1 ? 'X' : ''),   /* 含 X 结尾 */
+      i === 2 ? '2026-12-31' : (i === 3 ? '2029-11-30' : '2026-12'), /* 含「只有年月」写法 */
+      '1380000' + String(1000 + i),
+      ''
+    ]);
+  }
+  const resIn = SD.comp.excelIO._analyze(rowsIn, XIO_D);
+  ok('导入校验：78 条全部有效', resIn.valid.length === 78 && resIn.errors.length === 0,
+    resIn.valid.length + ' 条有效 / ' + resIn.errors.length + ' 条错误');
+  SD.comp.excelIO._doImport(XIO_D, resIn, 'replace');
+  if (SD.app.reload) SD.app.reload();
+  await wait(1600);
+  await go('devicePersonnel');
+
   let arr = (SD.app.state.summary.devicePersonnel || []).slice();
-  let isSample = arr.length > 0;
-  let isSampleSeedLoaded = false;
-  console.log('  （' + (isSample ? '示例版：' + arr.length + ' 人' : '空白版：空台账，先造一条') + '）');
-  if (!isSample) {
-    // 空台账：先验「载入内置名单」（这是空白版看到 78 人的正常入口）
-    const seedBtn = Array.from(doc.querySelectorAll('#view button')).find(x => /载入内置名单/.test(x.textContent));
-    ok('空台账时有「载入内置名单」按钮', !!seedBtn, seedBtn && seedBtn.textContent.trim());
-    ok('内置名单数据可用（SD.deviceSeed）', (SD.deviceSeed || []).length === 78, (SD.deviceSeed || []).length + ' 条');
-    if (seedBtn) {
-      seedBtn.click();
-      await wait(1600);
-      arr = (SD.app.state.summary.devicePersonnel || []).slice();
-      ok('点击后载入 78 人', arr.length === 78, arr.length + ' 人');
-      ok('载入后页面渲染出表格', doc.querySelectorAll('#view tbody tr').length === 78,
-        doc.querySelectorAll('#view tbody tr').length + ' 行');
-      ok('载入后按钮消失', !Array.from(doc.querySelectorAll('#view button')).some(x => /载入内置名单/.test(x.textContent)));
-    }
-    if (!arr.length) {
-      await SD.api.createDevicePersonnel({
-        code: 'TZSB-001', name: '测试人员', empNo: '00001', dept: '仓储物流部', post: '叉车班',
-        certType: 'N1', idNo: '320682199001011234', validTo: '2026-11-30', phone: '13800000000',
-        note: '', status: 'pending_review'
-      });
-      if (SD.app.reload) SD.app.reload();
-      await wait(1400);
-      await go('devicePersonnel');
-      arr = (SD.app.state.summary.devicePersonnel || []).slice();
-    }
-    isSampleSeedLoaded = arr.length === 78;
-  }
   ok('台账有数据', arr.length > 0, arr.length + ' 人');
-  if (isSample || arr.length === 78) {
-    ok('导入人数 78', arr.length === 78, arr.length);
-    const sum = SD.app.state.summary.devicePersonnelSummary;
-    ok('状态四类合计 = 总数',
-      sum.valid + sum.pending_review + sum.expired + sum.suspended === sum.total,
-      sum.valid + '+' + sum.pending_review + '+' + sum.expired + '+' + sum.suspended + '=' + sum.total);
-    const first = arr[0];
-    ok('首条为内置名单第一人（示例数据已脱敏）', first.name === '华桂兰', first.name);
-    ok('工号保留前导零样式（文本）', typeof first.empNo === 'string', first.empNo);
-    ok('身份证号按文本存（X 结尾保留）',
-      arr.some(x => /X$/i.test(String(x.idNo))), (arr.filter(x => /X$/i.test(String(x.idNo)))[0] || {}).idNo);
-    ok('只有年月的有效期补成月末（2026-12 → 2026-12-31）',
-      arr.some(x => x.validTo === '2026-12-31'),
-      arr.filter(x => x.validTo.indexOf('2026-12') === 0).map(x => x.validTo).join(','));
-    ok('完整日期原样保留（2029-11-30）', arr.some(x => x.validTo === '2029-11-30'));
-    ok('Excel 日期序列（2029-04-01 00:00:00）已转成 2029-04-01',
-      arr.some(x => x.validTo === '2029-04-01'));
-    ok('日期都规范成 YYYY-MM-DD',
-      arr.every(x => !x.validTo || /^\d{4}-\d{2}-\d{2}$/.test(x.validTo)),
-      arr.filter(x => x.validTo && !/^\d{4}-\d{2}-\d{2}$/.test(x.validTo)).length + ' 条异常');
-    ok('每条都有编号 / 姓名 / 部门 / 证书类型',
-      arr.every(x => x.code && x.name && x.dept && x.certType));
-  }
+  ok('导入人数 78', arr.length === 78, arr.length);
+
+  const sum = SD.app.state.summary.devicePersonnelSummary;
+  ok('状态四类合计 = 总数',
+    sum.valid + sum.pending_review + sum.expired + sum.suspended === sum.total,
+    sum.valid + '+' + sum.pending_review + '+' + sum.expired + '+' + sum.suspended + '=' + sum.total);
+
+  const first = arr[0];
+  ok('首条为导入的第一行', first.name === '测试1', first.name);
+  ok('工号按文本存（不丢前导零）', typeof first.empNo === 'string', typeof first.empNo + ' / ' + first.empNo);
+  ok('身份证号按文本存（X 结尾保留）',
+    arr.some(x => /X$/i.test(String(x.idNo))), (arr.filter(x => /X$/i.test(String(x.idNo)))[0] || {}).idNo);
+  ok('只有年月的有效期补成月末（2026-12 → 2026-12-31）',
+    arr.some(x => x.validTo === '2026-12-31'),
+    arr.filter(x => String(x.validTo).indexOf('2026-12') === 0).slice(0, 3).map(x => x.validTo).join(','));
+  ok('完整日期原样保留（2029-11-30）', arr.some(x => x.validTo === '2029-11-30'));
+  ok('日期都规范成 YYYY-MM-DD',
+    arr.every(x => !x.validTo || /^\d{4}-\d{2}-\d{2}$/.test(x.validTo)),
+    arr.filter(x => x.validTo && !/^\d{4}-\d{2}-\d{2}$/.test(x.validTo)).length + ' 条异常');
+  ok('每条都有编号 / 姓名 / 部门 / 证书类型',
+    arr.every(x => x.code && x.name && x.dept && x.certType));
+  ok('编号从 TZSB-001 起顺延', /^TZSB-001$/.test(arr[0].code), arr[0].code);
 
   console.log('== C. 渲染 / 搜索 / 筛选 / 排序 ==');
   const rows = doc.querySelectorAll('#view tbody tr');

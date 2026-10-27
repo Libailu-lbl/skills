@@ -26,6 +26,34 @@ SD.views.specPersonnel = (function () {
     return '在册 ' + p.total + ' 人 · 待复审 ' + p.pending_review + ' · 已过期 ' + p.expired + ' · 停用 ' + p.suspended;
   }
 
+  /* ---------- Excel 导入 / 导出配置（SD.comp.excelIO 用） ---------- */
+  var XIO = {
+    collection: 'specialPersonnel',
+    idPrefix: 'SP',
+    codeRule: 'special',           /* 编号留空时按 TZZY-001 顺延 */
+    keyField: 'certNo',            /* 判重字段：证书编号 */
+    dateField: 'validTo',
+    title: '导入特种作业人员台账',
+    fileBase: '特种作业人员台账',
+    sheetName: '特种作业人员',
+    tip: '支持 .xlsx / .csv，首行为表头。必填 <b>姓名 / 所属部门 / 作业类别 / 操作项目 / 证书编号 / ' +
+      '有效期起 / 有效期止 / 复审日期</b>；「证书编号」重复的行会跳过。日期可写 2026-10-27、2026/10/27、' +
+      '2026年10月27日 或 Excel 日期格式。',
+    fields: [
+      { name: 'code',       label: '编号',       aliases: ['人员编号'], type: 'text', width: 12 },
+      { name: 'name',       label: '姓名',       aliases: ['人员姓名'], required: true, type: 'text', width: 12, sample: '张三' },
+      { name: 'dept',       label: '所属部门',   aliases: ['部门'], required: true, type: 'text', width: 16, sample: '生产一部' },
+      { name: 'category',   label: '作业类别',   aliases: ['类别', '作业类型'], required: true, type: 'dict', dict: 'specialCategory', width: 20 },
+      { name: 'operation',  label: '操作项目',   aliases: ['项目', '准操项目'], required: true, type: 'text', width: 20, sample: '低压电工作业' },
+      { name: 'certNo',     label: '证书编号',   aliases: ['证书号', '证件编号'], required: true, type: 'text', width: 20 },
+      { name: 'issuer',     label: '发证机关',   aliases: ['发证单位'], type: 'text', width: 18 },
+      { name: 'validFrom',  label: '有效期起',   aliases: ['发证日期', '开始日期'], required: true, type: 'date', width: 13 },
+      { name: 'validTo',    label: '有效期止',   aliases: ['有效期至', '到期日'], required: true, type: 'date', width: 13 },
+      { name: 'reviewDate', label: '复审日期',   aliases: ['复审时间'], required: true, type: 'date', width: 13 },
+      { name: 'status',     label: '资质状态',   aliases: ['状态'], type: 'status', dict: 'specialStatus', width: 10 }
+    ]
+  };
+
   var FIELDS = [
     SD.code.field('special'),             /* 人员编号：必填，手动填写 */
     { name: 'name', label: '姓名', type: 'text', required: true },
@@ -304,6 +332,29 @@ SD.views.specPersonnel = (function () {
     q.value = f.q || '';
     q.addEventListener('input', U.debounce(function () { f.q = q.value; redraw(); }, 250));
     spacer.appendChild(q);
+    /* Excel 导入 / 导出（2026-10-27 新增，与设备人员台账同一套逻辑） */
+    var impBtn = U.h('<button class="btn sm ghost" title="从 .xlsx / .csv 批量导入">' +
+      SD.icons.get('upload', 14) + '导入 Excel</button>');
+    impBtn.addEventListener('click', function () {
+      SD.comp.excelIO.openImport({
+        collection: XIO.collection, idPrefix: XIO.idPrefix, codeRule: XIO.codeRule,
+        keyField: XIO.keyField, dateField: XIO.dateField,
+        title: XIO.title, fileBase: XIO.fileBase, sheetName: XIO.sheetName,
+        tip: XIO.tip, fields: XIO.fields, ctx: ctx
+      });
+    });
+    spacer.appendChild(impBtn);
+
+    var expBtn = U.h('<button class="btn sm ghost" title="把整份台账导出为 Excel">' +
+      SD.icons.get('download', 14) + '导出 Excel</button>');
+    expBtn.addEventListener('click', function () {
+      SD.comp.excelIO.exportExcel({
+        collection: XIO.collection, fields: XIO.fields,
+        sheetName: XIO.sheetName, fileBase: XIO.fileBase
+      });
+    });
+    spacer.appendChild(expBtn);
+
     var addBtn = U.h('<button class="btn sm primary">' + SD.icons.get('plus', 14) + '新增人员</button>');
     addBtn.addEventListener('click', function () { openForm(ctx, null); });
     spacer.appendChild(addBtn);
@@ -434,5 +485,5 @@ SD.views.specPersonnel = (function () {
     redraw();
   }
 
-  return { name: '特种作业人员', sub: sub, render: render };
+  return { name: '特种作业人员', sub: sub, render: render, XIO: XIO };
 })();

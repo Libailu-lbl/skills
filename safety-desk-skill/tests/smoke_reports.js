@@ -59,6 +59,23 @@ function ok(name, cond, extra) {
   if (!SD || !SD.app) { console.log('FATAL: SD 未初始化'); process.exit(1); }
   const doc = win.document;
 
+  /* 2026-10-27：特种设备台账改为 Excel 导入、不再内置名单 →
+     这里先导入 2 条（1 条已过期、1 条有效），否则报表的「特种设备」来源会没有数据。 */
+  if (SD.views && SD.views.devicePersonnel && SD.views.devicePersonnel.XIO && SD.comp.excelIO) {
+    const XIO_R = SD.views.devicePersonnel.XIO;
+    const rowsR = [
+      ['姓名', '所属部门', '证件编号', '证书有效期至'],
+      ['报表测试甲', '仓储物流部', '320682199001019999', '2025-06-30'],
+      ['报表测试乙', '设备动力部', '320682199001018888', '2027-06-30']
+    ];
+    const resR = SD.comp.excelIO._analyze(rowsR, XIO_R);
+    if (resR && !resR.fatal && resR.valid.length) {
+      SD.comp.excelIO._doImport(XIO_R, resR, 'replace');
+      if (SD.app.reload) SD.app.reload();
+      await wait(1300);
+    }
+  }
+
   const go = async r => { win.location.hash = '#/' + r; await wait(360); };
   const view = () => doc.getElementById('view');
   const click = el => el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));

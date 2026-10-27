@@ -62,7 +62,7 @@ run_sets() {
 
 echo "== 示例版（示例数据） http://127.0.0.1:$P_EXAMPLE =="
 OUT1=$(run_sets "http://127.0.0.1:$P_EXAMPLE/index.html" \
-  smoke smoke_code smoke_crud smoke_device smoke_ops smoke_photo smoke_photos \
+  smoke smoke_code smoke_crud smoke_device smoke_excelio smoke_ops smoke_photo smoke_photos \
   smoke_print smoke_reports smoke_security smoke_settings smoke_shift \
   smoke_special smoke_training smoke_trend smoke_vault smoke_ocr)
 echo "$OUT1" | sed '$d'
@@ -71,7 +71,7 @@ BAD1=$(printf '%s' "$OUT1" | tail -1)
 echo
 echo "== 空白版（单机空白） http://127.0.0.1:$P_BLANK =="
 OUT2=$(run_sets "http://127.0.0.1:$P_BLANK/index.html" \
-  smoke_blank smoke_shift smoke_security smoke_device smoke_photo smoke_ocr smoke_vault)
+  smoke_blank smoke_device smoke_excelio smoke_shift smoke_security smoke_photo smoke_ocr smoke_vault)
 echo "$OUT2" | sed '$d'
 BAD2=$(printf '%s' "$OUT2" | tail -1)
 

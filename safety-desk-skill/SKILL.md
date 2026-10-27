@@ -60,7 +60,7 @@ description: 搭建「离线优先的个人业务工作台」HTML 应用的完�
 | 状态 | 内存对象 + localStorage，**单一数据源** | 页面刷新不丢、导出即备份 |
 | 样式 | 手写 CSS + CSS 变量 | 无外部字体/图标库；图标全部内联 SVG |
 | 图表 | **内联 SVG 手写** | 图表库体积大且要外链；业务图表就折线/柱状/环形三种 |
-| Excel | **自写 `xlsxWriter.js`**（OOXML + 自实现 ZIP） | SheetJS 有 500KB+ 且是外部依赖；我们只需要「写」不需要「读」 |
+| Excel | **读写都自写**：写 `xlsxWriter.js`，读 `xlsxReader.js` | SheetJS 500KB+ 且要外链；写只是拼 OOXML + ZIP，读只需 ZIP 目录 + `DecompressionStream` + `DOMParser`，约 300 行 |
 | Word | **自写 `docxWriter.js`** | 同上；纯前端造 .docx 就是拼 XML + ZIP |
 | 测试 | **jsdom + fake-indexeddb** + Chrome headless 真打印 | 逻辑用 jsdom 秒级验证；打印/分页/字体只有真浏览器说了算 |
 
@@ -162,6 +162,8 @@ assets/js/
 |---|---|---|
 | A4 打印 | `print.css`（屏幕版式）+ **`print-only.css`（`media="print"` 独立）** | 隐藏一切非纸张元素；`@page` 定纸张与页边距；`zoom` 缩放而不是 `transform` |
 | Excel | `components/xlsxWriter.js` | 合并/列宽/行高/逐边边框/图片/页面设置；行高写在行首格上也要认 |
+| Excel 导入 | `components/xlsxReader.js` | 解 ZIP 中央目录 → `DecompressionStream('deflate-raw')` → `DOMParser` 读 sheet；`sharedStrings` 富文本要把多个 `<t>` 拼起来；日期是序列号 |
+| 台账批量导入 | `components/excelIO.js` | 字段定义驱动：表头别名映射、逐行校验、文件内去重、追加/覆盖、模板下载 |
 | Word | `components/docxWriter.js` | 页边距、表格缩进、照片等比缩放 |
 
 **铁律**：先拿原始表格 dump 成「参考基线」，再写代码，最后用 openpyxl 把**导出件和基线逐格 diff**（列宽 / 行高 / 合并区 / 可见边框线条 / 字号），差一处改一处。详见 `references/print-and-export.md`。

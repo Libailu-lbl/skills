@@ -900,3 +900,46 @@ table.tbl tr.row-warn td:first-child{ box-shadow:inset 3px 0 0 var(--lv-large); 
 .wm-time-wrap{ display:flex; gap:6px; align-items:center; }
 .wm-time-wrap .input{ flex:1 1 auto; min-width:0; }
 .wm-time-wrap .btn{ flex:0 0 auto; height:34px; }
+
+/* ---------- Excel 导入 / 导出弹窗（2026-10-27 新增） ---------- */
+.xio{ display:flex; flex-direction:column; gap:10px; }
+.xio-tip{ margin:0; font-size:13px; line-height:1.75; color:var(--muted,#5b6472); }
+.xio-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.xio-row .spacer{ flex:1; }
+.xio-name{
+  font-size:13px; color:var(--muted,#8a94a3);
+  max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.xio-mode{ display:flex; gap:20px; flex-wrap:wrap; font-size:13px; color:var(--muted,#5b6472); }
+.xio-mode label{ display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+.xio-result{ min-height:20px; }
+.xio-idle{ margin:0; font-size:13px; color:var(--muted,#8a94a3); }
+.xio-fatal{
+  margin:0; padding:10px 12px; border-radius:8px;
+  background:var(--danger-bg,#fdecec); color:var(--danger,#c0392b);
+  font-size:13px; line-height:1.7;
+}
+.xio-stat{ font-size:13px; color:var(--muted,#5b6472); padding:6px 0; }
+.xio-stat b{ font-size:16px; margin:0 2px; font-weight:700; }
+.xio-stat b.ok{ color:var(--ok,#1a8f5c); }
+.xio-stat b.warn{ color:#b26a00; }
+.xio-stat b.err{ color:var(--danger,#c0392b); }
+.xio-sub{ margin-left:10px; font-size:12px; color:var(--muted,#8a94a3); }
+.xio-errs{
+  border:1px solid #f0c8c2; border-radius:8px; padding:8px 10px;
+  background:var(--danger-bg,#fdf3f2); margin-bottom:8px;
+}
+.xio-err-h{ font-size:12px; font-weight:600; color:var(--danger,#c0392b); margin-bottom:4px; }
+.xio-err{ font-size:12px; line-height:1.75; color:#8a4a44; }
+.xio-err-more{ font-size:12px; color:var(--muted,#8a94a3); margin-top:4px; }
+.xio-pv{
+  max-height:230px; overflow:auto;
+  border:1px solid var(--line,#e3e7ee); border-radius:8px;
+}
+.xio-tb{ width:100%; border-collapse:collapse; font-size:12px; }
+.xio-tb th, .xio-tb td{
+  border-bottom:1px solid var(--line-2,#eef1f5);
+  padding:6px 8px; text-align:left; white-space:nowrap;
+}
+.xio-tb th{ background:#f7f9fc; font-weight:600; position:sticky; top:0; }
+.xio-tb tr:last-child td{ border-bottom:0; }

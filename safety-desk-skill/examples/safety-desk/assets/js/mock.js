@@ -418,16 +418,9 @@ SD.mock = (function () {
   }
 
   function buildDevicePersonnel() {
-    var T = U.today();
-    /* 名单数据在 assets/js/data/deviceSeed.js（两版共用），这里只做派生：
-       id / 空照片 / 按 fecha 算初始状态 */
-    var raw = (SD.deviceSeed || []).map(function (x) { return Object.assign({}, x); });
-    return raw.map(function (r, i) {
-      r.id = 'DP' + (7000 + i);
-      r.photos = r.photos || [];           // 证书照片（可后补，编辑里上传）
-      r.status = statusOfCert(r.validTo, T);
-      return r;
-    });
+    /* 2026-10-27：**不再内置名单**。台账数据以用户导入的 Excel / CSV 为准，
+       示例版与空白版都从空台账起步（导入后由 metrics 按有效期实时判定状态）。 */
+    return [];
   }
 
   /* ---------- 危险作业票（八大危险作业）：8 条（覆盖 草稿/待审批/已批准/作业中/已完工/已作废） ---------- */

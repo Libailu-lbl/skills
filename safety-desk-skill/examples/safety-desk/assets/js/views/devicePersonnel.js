@@ -2,8 +2,8 @@
    views/devicePersonnel.js — 特种设备人员台账（2026-10-24 新增）
    ────────────────────────────────────────────────────────
    · 版面与「特种作业人员台账」一致：指标卡 + 状态 chips + 搜索 + 可排序表格 + 行内操作
-   · 数据来源：2026 叉车证人员名单（78 人，全部 N1 叉车司机证），已随示例数据内置；
-     空白版为空台账，可逐条新增或从备份导入
+   · 数据来源（2026-10-27 起）：**以导入的 Excel / CSV 为准**，不再内置名单；
+     台账为空时可用「导入 Excel」批量建档（可下载模板），也可逐条新增
    · 字段：编号 / 姓名 / 工号 / 部门 / 岗位 / 证书类型 / 证件编号 / 证书有效期至 / 联系方式 / 备注
    · 设备证只记「有效期至」（原表没有起算日与复审日），状态按剩余天数实时判定：
      已过期（红） / 90 天内待复审（橙） / 有效
@@ -21,6 +21,33 @@ SD.views.devicePersonnel = (function () {
     { v: 'expired',        n: '已过期' },
     { v: 'suspended',      n: '停用' }
   ];
+
+  /* ---------- Excel 导入 / 导出配置（SD.comp.excelIO 用） ---------- */
+  var XIO = {
+    collection: 'devicePersonnel',
+    idPrefix: 'DP',
+    codeRule: 'device',            /* 编号留空时按 TZSB-001 顺延 */
+    keyField: 'idNo',              /* 判重字段：证件编号 */
+    dateField: 'validTo',
+    title: '导入特种设备人员台账',
+    fileBase: '特种设备人员台账',
+    sheetName: '特种设备人员',
+    tip: '支持 .xlsx / .csv，首行为表头。必填 <b>姓名 / 所属部门 / 证件编号 / 证书有效期至</b>；' +
+      '「证件编号」重复的行会跳过。日期可写 2026-10-27、2026/10/27、2026年10月27日 或 Excel 日期格式。',
+    fields: [
+      { name: 'code',     label: '编号',         aliases: ['人员编号', '设备人员编号'], type: 'text', width: 12 },
+      { name: 'name',     label: '姓名',         aliases: ['人员姓名', '员工姓名'], required: true, type: 'text', width: 12, sample: '张三' },
+      { name: 'empNo',    label: '工号',         aliases: ['员工编号', '职工号'], type: 'text', width: 10 },
+      { name: 'dept',     label: '所属部门',     aliases: ['部门'], required: true, type: 'text', width: 16, sample: '仓储物流部' },
+      { name: 'post',     label: '岗位',         aliases: ['职位'], type: 'text', width: 14 },
+      { name: 'certType', label: '证书类型',     aliases: ['证书类别', '作业种类'], type: 'text', width: 12, def: 'N1', sample: 'N1' },
+      { name: 'idNo',     label: '证件编号',     aliases: ['身份证号', '身份证号码', '证书编号', '证件号'], required: true, type: 'text', width: 22 },
+      { name: 'validTo',  label: '证书有效期至', aliases: ['有效期至', '有效期', '到期日', '证书有效期'], required: true, type: 'date', width: 14 },
+      { name: 'phone',    label: '联系方式',     aliases: ['电话', '手机号', '联系电话'], type: 'text', width: 14 },
+      { name: 'note',     label: '备注',         aliases: ['说明'], type: 'text', width: 18 },
+      { name: 'status',   label: '证书状态',     aliases: ['状态', '资质状态'], type: 'status', dict: 'specialStatus', width: 10 }
+    ]
+  };
 
   function sub(s) {
     if (!s) return '';
@@ -135,24 +162,28 @@ SD.views.devicePersonnel = (function () {
     q.value = f.q || '';
     q.addEventListener('input', U.debounce(function () { f.q = q.value; redraw(); }, 250));
     spacer.appendChild(q);
-    // 台账为空且存在内置名单时，给一个一键载入（空白版 / 误删后都能用）
-    if (!(s.devicePersonnel || []).length && (SD.deviceSeed || []).length) {
-      var seedBtn = U.h('<button class="btn sm ghost" title="把内置的特种设备人员名单（' +
-        SD.deviceSeed.length + ' 人）写进本机台账">' + SD.icons.get('download', 14) + '载入内置名单</button>');
-      seedBtn.addEventListener('click', function () {
-        var arr = SD.deviceSeed.map(function (x, i) {
-          var o = Object.assign({}, x);
-          o.id = 'DP' + (7000 + i);
-          o.photos = o.photos || [];
-          return o;
-        });
-        SD.store.data().devicePersonnel = arr;    // 整体写入（逐条 create 会被 mock 延迟拖到几十秒）
-        SD.store.save();
-        U.toast('已载入 ' + arr.length + ' 人，状态按证书有效期自动判定', 'ok');
-        ctx.reload();
+    /* Excel 导入 / 导出（2026-10-27：台账数据来源改为导入，内置名单已移除） */
+    var impBtn = U.h('<button class="btn sm ghost" title="从 .xlsx / .csv 批量导入台账">' +
+      SD.icons.get('upload', 14) + '导入 Excel</button>');
+    impBtn.addEventListener('click', function () {
+      SD.comp.excelIO.openImport({
+        collection: XIO.collection, idPrefix: XIO.idPrefix, codeRule: XIO.codeRule,
+        keyField: XIO.keyField, dateField: XIO.dateField,
+        title: XIO.title, fileBase: XIO.fileBase, sheetName: XIO.sheetName,
+        tip: XIO.tip, fields: XIO.fields, ctx: ctx
       });
-      spacer.appendChild(seedBtn);
-    }
+    });
+    spacer.appendChild(impBtn);
+
+    var expBtn = U.h('<button class="btn sm ghost" title="把整份台账导出为 Excel">' +
+      SD.icons.get('download', 14) + '导出 Excel</button>');
+    expBtn.addEventListener('click', function () {
+      SD.comp.excelIO.exportExcel({
+        collection: XIO.collection, fields: XIO.fields,
+        sheetName: XIO.sheetName, fileBase: XIO.fileBase
+      });
+    });
+    spacer.appendChild(expBtn);
 
     var addBtn = U.h('<button class="btn sm primary">' + SD.icons.get('plus', 14) + '新增设备人员</button>');
     addBtn.addEventListener('click', function () { openForm(ctx, null); });
@@ -195,8 +226,8 @@ SD.views.devicePersonnel = (function () {
           title: all.length ? '这一类没有记录' : '还没有特种设备人员台账',
           desc: all.length
             ? (f.q ? '没有匹配「' + f.q + '」的人员，换个关键词或清空搜索。' : '换个筛选条件看看。')
-            : '新增第一位后，这里会按证书有效期自动预警。',
-          action: all.length ? null : { text: '新增第一位', onClick: function () { openForm(ctx, null); } }
+            : '点上方「导入 Excel」把现有名单批量导进来（可先下载模板），也可以逐条新增；导入后按证书有效期自动预警。',
+          action: all.length ? null : { text: '导入 Excel', onClick: function () { impBtn.click(); } }
         }));
         return;
       }
@@ -282,5 +313,5 @@ SD.views.devicePersonnel = (function () {
     redraw();
   }
 
-  return { name: '特种设备人员', sub: sub, render: render };
+  return { name: '特种设备人员', sub: sub, render: render, XIO: XIO };
 })();

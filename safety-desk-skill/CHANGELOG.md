@@ -2,6 +2,30 @@
 
 本项目按「工作台版本」记录；日期为实际开发日期。
 
+## v1.1.0 — 台账 Excel 导入导出
+
+**主题**：两个人员台账支持 .xlsx / .csv 批量导入导出；特种设备台账不再内置名单。
+
+### 新增
+- `components/xlsxReader.js`：浏览器端读 .xlsx —— 解 ZIP 中央目录、`DecompressionStream` 解 deflate、
+  `DOMParser` 读 sheet、拼 `sharedStrings`、CSV 解析、Excel 日期序列号换算。零依赖、断网可用。
+- `components/excelIO.js`：字段定义驱动的导入导出器 —— 表头别名映射、逐行校验（必填 / 日期 / 枚举 / 去重）、
+  预览与错误清单、追加或覆盖两种写入、模板下载。
+- `docs/excel-import-export.md`：字段与格式要求、校验规则、异常处理、CRUD 与展示的调整。
+- `tests/smoke_excelio.js`（**89 项**）+ `tests/_xlsx_sample.xlsx`（真实 deflate 压缩样本）。
+
+### 变更
+- **特种设备人员台账数据来源改为导入**：删除 `assets/js/data/deviceSeed.js`，`buildDevicePersonnel()` 返回 `[]`；
+  工具栏「载入内置名单」换成「导入 Excel」「导出 Excel」；空态文案改为引导导入。
+- 特种作业人员台账同样新增导入 / 导出按钮，字段与别名独立配置。
+- 日期解析支持：`2026-10-27` / `2026/10/27` / `2026.10.27` / `2026年10月27日` / Excel 序列号 /
+  **只有年月（补该月最后一天）**。
+- `smoke_device.js` 改为「走真实导入链路造 78 条」，**44 项**；`smoke_reports.js` 自备设备人员数据。
+
+### 兼容
+- 台账的增删改查、搜索 / 筛选 / 排序、指标卡、报表预警逻辑均未改动 —— 导入只是「批量新增」。
+- 字典同时兼容 `SD.mock.DICT`（示例版）与 `SD.dict.DICT`（空白版）。
+
 ## v1.0.0 — 首个可复用版本
 
 **定位**：把一套实际在用的「安全员工作台」整理成可克隆复用的 SKILL。
