@@ -111,10 +111,10 @@ function ok(name, cond, extra) {
      唯一区别是「检查情况」列放宽到放得下「√ 正常」四个字。 */
   const colPcts = Array.from(view().querySelectorAll('.sl-table col'))
     .map(c => parseFloat(String(c.getAttribute('style') || '').replace(/[^0-9.]/g, '')));
-  /* 「检查内容」列按用户要求加宽到 78（最长的一条要 74 个单位，原表 69.75 会折行被行高切掉），
-     其余四列仍照原表：4.41 / 9 / 5.66 / 34.08 */
-  const WANT = [3.36, 6.86, 59.47, 4.32, 25.99];       // 4.41/9/78/5.66/34.08 换算
-  const WANT_UI = [3.14, 6.41, 58.37, 7.83, 24.26];    // 界面：检查情况列按文字宽度放宽
+  /* 「检查内容」列按用户要求加宽到 78（最长的一条要 74 个单位，原表 69.75 会折行被行高切掉）；
+     ★ 2026-11-04 序号列 4.41→6.5、备注列 34.08→40（按用户要求加宽） */
+  const WANT = [4.67, 6.47, 56.05, 4.07, 28.74];       // 6.5/9/78/5.66/40 换算
+  const WANT_UI = [4.38, 6.06, 55.22, 7.41, 26.94];    // 界面：检查情况列按文字宽度放宽
   ok('界面五列列宽（检查情况列按文字放宽）', colPcts.length === 5 &&
     colPcts.every((v, i) => Math.abs(v - WANT_UI[i]) < 0.02), colPcts.join(','));
   ok('界面检查情况列比原表宽（放得下文字）', colPcts[3] > WANT[3] + 3, colPcts[3]);
@@ -132,7 +132,8 @@ function ok(name, cond, extra) {
     view().querySelectorAll('.sl-head th')[4].textContent);
   const logo = view().querySelector('.sl-logo');
   ok('界面左上角有公司标识', !!logo, logo && logo.getAttribute('src'));
-  ok('标识引用本地图片（离线可用）', logo && /assets\/img\/logo.png/.test(logo.getAttribute('src')),
+  /* 路径放宽到 logo.png / mily-logo.png 两种：仓库示例用占位图叫 logo.png，真实项目叫 mily-logo.png */
+  ok('标识引用本地图片（离线可用）', logo && /assets\/img\/(?:mily-)?logo\.png/.test(logo.getAttribute('src')),
     logo && logo.getAttribute('src'));
 
   /* ---------- 4. 密码解锁 ---------- */
@@ -327,29 +328,47 @@ function ok(name, cond, extra) {
 
   /* ---------- 7. 导出 Excel ---------- */
   console.log('== 7. 导出 Excel ==');
+  /* 先造一条当天夜班记录，验证「两个班次都有内容时各带各的」 */
+  await SD.api.createShiftLog({
+    date: today, shift: 'night', inspector: '王安全',
+    checks: (function () { var c = new Array(19).fill(''); c[5] = 'ok'; c[8] = 'bad'; return c; })(),
+    events: ['夜班 1 号门巡逻正常', '夜班发现 3 号厂房灯未关'],
+    updatedAt: today + ' 23:00'
+  });
+  await SD.app.reload();
+  /* reload 是异步取数（mock latency 180~520ms），轮询等 shiftLog 页面重新渲染出按钮 */
+  for (let i = 0; i < 40 && !btns().some(b => /导出 Excel/.test(b.textContent)); i++) await wait(100);
   let dlName = '', cap = null;
   SD.comp.xlsxWriter.download = (blob, name) => { dlName = name; cap = blob; };
   btns().filter(b => /导出 Excel/.test(b.textContent))[0].click();
   await wait(260);
-  ok('文件名含日期与班次', new RegExp('安全巡检交接班记录-' + today + '-白班\\.xlsx').test(dlName), dlName);
+  ok('文件名含日期与「白夜班」', new RegExp('安全巡检交接班记录-' + today + '-白夜班\\.xlsx').test(dlName), dlName);
 
-  /* 出件内容逐项核对：一条都不能少 */
+  /* 出件内容逐项核对：白班 + 夜班各出一个 sheet（各 fitToPage 恰好一页） */
   const buf = new Uint8Array(await cap.arrayBuffer());
   const zip = unzipStored(buf);
-  const sheet = Buffer.from(zip['xl/worksheets/sheet1.xml'] || '').toString('utf8');
-  ok('拿到 sheet1.xml', !!sheet, Object.keys(zip).join('|'));
+  const sheet1 = Buffer.from(zip['xl/worksheets/sheet1.xml'] || '').toString('utf8');
+  const sheet2 = Buffer.from(zip['xl/worksheets/sheet2.xml'] || '').toString('utf8');
+  ok('拿到 sheet1.xml（白班）', !!sheet1, Object.keys(zip).join('|'));
+  ok('拿到 sheet2.xml（夜班）', !!sheet2);
+  ok('workbook 注册两个 sheet「白班」「夜班」',
+    /<sheets>[\s\S]*<sheet [^>]*name="[^"]*白班"[^>]*\/>[\s\S]*<sheet [^>]*name="[^"]*夜班"[^>]*\/>[\s\S]*<\/sheets>/.test(
+      Buffer.from(zip['xl/workbook.xml'] || '').toString('utf8')));
+  const sheet = sheet1;
   ok('出件 24 行（第 1 行放左上角标识 + 标题+抬头+表头+19 项+表尾）',
     (sheet.match(/<row /g) || []).length === 24, (sheet.match(/<row /g) || []).length);
   ok('第 1 行是标识行（高 30pt，无内容）', /<row r="1" ht="30"/.test(sheet) && !/<c r="A1"[^>]*>\s*<is>/.test(sheet));
   ok('标题落在第 2 行（原表 A2）', /<c r="A2"[^>]*>[\s\S]*?现场安全巡检与交接班记录/.test(sheet));
-  ok('列宽照原表，「检查内容」列加宽到 78（4.41/9/78/5.66/34.08）',
-    /width="4.41"/.test(sheet) && /width="9"/.test(sheet) && /width="78"/.test(sheet) &&
-    /width="5.66"/.test(sheet) && /width="34.08"/.test(sheet));
-  ok('A4 横向 + 常规页边距 + 缩放到一页（打印不漏）',
+  ok('列宽照原表并微调，「检查内容」列加宽到 78、序号 6.5、备注 40（6.5/9/78/5.66/40）',
+    /width="6.5"/.test(sheet) && /width="9"/.test(sheet) && /width="78"/.test(sheet) &&
+    /width="5.66"/.test(sheet) && /width="40"/.test(sheet));
+  /* 每个 sheet 各自 fitToPage 缩放到恰好一页（这才是「一页一张表」的正解） */
+  ok('白班 sheet A4 横向 + 缩放到一页（fitToPage，打印不漏）',
     /orientation="landscape"/.test(sheet) && /<pageSetUpPr fitToPage="1"\/>/.test(sheet) &&
     /fitToWidth="1"/.test(sheet) && /fitToHeight="1"/.test(sheet) &&
     /<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"\/>/.test(sheet),
-    (sheet.match(/<pageMargins[^>]*\/>/) || [''])[0]);
+    (sheet.match(/<pageSetup[^>]*\/>/) || [''])[0]);
+  ok('夜班 sheet 同样 fitToPage 一页', /fitToPage="1"/.test(sheet2) && /orientation="landscape"/.test(sheet2));
   const styles = Buffer.from(zip['xl/styles.xml'] || '').toString('utf8');
   ok('备注自动换行（不会挤成一行）', /wrapText="1"/.test(styles), styles.slice(0, 80));
   ok('备注按 1、2、逐条换行', /1、东侧消防通道堆料/.test(sheet) && /2、2 号配电箱门锁损坏/.test(sheet));
@@ -392,12 +411,29 @@ function ok(name, cond, extra) {
     /<mergeCell ref="B8:B16"\/>/.test(sheet) && /<mergeCell ref="B19:B22"\/>/.test(sheet));
   ok('表尾合并仍是 A24:E24（照原表）', /<mergeCell ref="A24:E24"\/>/.test(sheet));
 
-  /* 左上角公司标识：真嵌进 .xlsx 里（media + drawing + 两级 rels + 挂到工作表） */
+  /* ★ 2026-11-04：白夜班两个 sheet —— 夜班 sheet 完整 24 行、班次「夜班」、
+     带出夜班自己的勾选与备注（不是照抄白班） */
+  ok('夜班表 24 行完整', (sheet2.match(/<row /g) || []).length === 24, (sheet2.match(/<row /g) || []).length);
+  ok('夜班表班次 = 夜班', /班次：夜班/.test(sheet2));
+  ok('夜班表日期一致', sheet2.indexOf(today) >= 0);
+  ok('夜班表带出自己的备注（第 1 条）', /1、夜班 1 号门巡逻正常/.test(sheet2));
+  ok('夜班表带出自己的备注（第 2 条）', /2、夜班发现 3 号厂房灯未关/.test(sheet2));
+  ok('夜班表带出自己的异常勾选（第 9 项 × 落在 D9）', /<c r="D9"[^>]*>[\s\S]*?×/.test(sheet2));
+  ok('夜班表巡查人员留空（不出现姓名）', sheet2.indexOf('王安全') < 0 && sheet2.indexOf('王安全') < 0);
+  ok('白班表没有串入夜班备注', !/夜班 1 号门/.test(sheet1));
+
+  /* 左上角公司标识：真嵌进 .xlsx 里（白班 + 夜班各一张，各自 sheet 各一个 drawing） */
   const png = zip['xl/media/image1.png'] ? new Uint8Array(zip['xl/media/image1.png']) : new Uint8Array();
-  ok('导出件内嵌左上角标识', png.length > 0, Object.keys(zip).join('|'));
-  ok('标识是合法 PNG（PNG magic + 长度与 brandLogo 的 base64 一致）',
-    png.length > 0 && png[0] === 0x89 && png[1] === 0x50 && png[2] === 0x4e &&
-    png.length === Buffer.from(SD.BRAND_LOGO.base64, 'base64').length, png.length);
+  ok('导出件内嵌左上角标识（白班）', png.length > 0, Object.keys(zip).join('|'));
+  ok('夜班也有自己的标识（image2.png）', !!zip['xl/media/image2.png']);
+  /* 不写死字节数：真实项目是企业标识、仓库示例是占位图，两者大小不同。
+     改为「是合法 PNG + 长度与 brandLogo.js 里的 base64 对得上」，
+     既换标识不用改测试，也仍能抓住「base64 与文件不同步」这个真问题。 */
+  const logoB64 = String((SD.BRAND_LOGO && SD.BRAND_LOGO.base64) || '').replace(/\s/g, '');
+  const logoBytes = logoB64 ? Math.floor(atob(logoB64).length) : 0;
+  ok('标识是合法 PNG，且与 brandLogo.js 的 base64 等长',
+    png.length > 100 && png[0] === 0x89 && png[1] === 0x50 && png[2] === 0x4e && png.length === logoBytes,
+    png.length + ' 字节 / base64 解出 ' + logoBytes);
   const drawing = Buffer.from(zip['xl/drawings/drawing1.xml'] || '').toString('utf8');
   ok('drawing 部件：oneCellAnchor 钉在第 1 行 A1', /xdr:oneCellAnchor/.test(drawing) && /<xdr:row>0<\/xdr:row>/.test(drawing));
   ok('两级 rels 都在（工作表→drawing→图片）',
@@ -406,10 +442,10 @@ function ok(name, cond, extra) {
   const ct = Buffer.from(zip['[Content_Types].xml'] || '').toString('utf8');
   ok('Content_Types 登记 png 与 drawing',
     /Extension="png"/.test(ct) && /drawing1\.xml/.test(ct), ct.slice(0, 120));
-  /* 「检查内容」列加宽后最长的一条一行放下，19 行全部维持原表 20.5pt，不用加高 */
+  /* 「检查内容」列加宽后最长的一条一行放下，19 行全部维持 24pt，不用加高 */
   ok('19 个明细行都是 24pt（与保存页那份文件一致）',
     (sheet.match(/<row r="\d+" ht="24"/g) || []).length === 19 &&
-    !/ht="36"/.test(sheet), (sheet.match(/ht="[\d.]+"/g) || []).join(','));
+    !/ht="36"/.test(sheet), (sheet.match(/ht="[\d.]+"/g) || []).length + ' 个 ht 值');
   ok('巡检人员后面空出手签位（全角空格占位）',
     /巡检人员：　　　　　　　　　　　　班次：/.test(sheet),
     (sheet.match(/巡检人员：[^<]*/) || [''])[0]);
@@ -504,18 +540,18 @@ function ok(name, cond, extra) {
   ok('内置图标里有 award', !!award);
   award.click();
   await wait(80);
-  doc.getElementById('setName').value = '示例 EHS 台';
+  doc.getElementById('setName').value = '梦百合 EHS 台';
   doc.getElementById('setSub').value = '安全员专用';
   doc.querySelector('.js-ok').click();
   await wait(320);
-  ok('名称已改到左上角', doc.getElementById('appName').textContent === '示例 EHS 台',
+  ok('名称已改到左上角', doc.getElementById('appName').textContent === '梦百合 EHS 台',
     doc.getElementById('appName').textContent);
   ok('副标题已改', doc.getElementById('appSub').textContent === '安全员专用');
   ok('图标已切换', doc.querySelector('.brand-mark').getAttribute('data-icon') === 'award',
     doc.querySelector('.brand-mark').getAttribute('data-icon'));
-  ok('浏览器标题同步', doc.title === '示例 EHS 台', doc.title);
+  ok('浏览器标题同步', doc.title === '梦百合 EHS 台', doc.title);
   ok('设置已持久化', SD.store.getSettings().appIcon === 'award' &&
-    SD.store.getSettings().appName === '示例 EHS 台');
+    SD.store.getSettings().appName === '梦百合 EHS 台');
 
   /* ---------- 11. 密码修改 ---------- */
   console.log('== 11. 密码设置 ==');

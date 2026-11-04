@@ -548,6 +548,56 @@ SD.mock = (function () {
     ];
   }
 
+  /** 安全违章考核单（★ 2026-11-04 新增）
+      编号 FZKH-001 起；一单一次违章，带现场照片（示例图，点编号可看）。 */
+  function buildViolations() {
+    var T = U.today();
+    function d(off) { return U.shift(T, off); }
+    var raw = [
+      {
+        code: 'FZKH-001', date: d(-1), applicant: '王安全',
+        employee: '王志强', empNo: 'MJ1023', dept: '发泡车间', leader: '孙浩',
+        content: '未按规定佩戴安全帽进入发泡车间作业区，经现场提醒后立即改正，按《安全奖惩管理办法》第 12 条考核。',
+        photos: [samplePhoto('示例 · 未戴安全帽现场', 640, 480), samplePhoto('示例 · 现场提醒后整改', 640, 480)],
+        remark: '当日班前会已重申劳保穿戴要求'
+      },
+      {
+        code: 'FZKH-002', date: d(-3), applicant: '王安全',
+        employee: '陈立', empNo: 'MJ0871', dept: '裁剪一车间', leader: '周敏',
+        content: '行车吊装作业时未设置警戒区，人员在吊物下方穿行，违反《起重吊装作业安全规程》第 5.2 条。',
+        photos: [samplePhoto('示例 · 吊装作业警戒缺失', 640, 480)],
+        remark: ''
+      },
+      {
+        code: 'FZKH-003', date: d(-6), applicant: '孙浩',
+        employee: '刘洋', empNo: 'MJ1145', dept: '缝制二车间', leader: '吴建',
+        content: '在配电柜前堆放成品布卷，堵塞操作通道与配电柜门，违反现场 5S 与用电安全规定。',
+        photos: [samplePhoto('示例 · 配电柜前堆料', 640, 480), samplePhoto('示例 · 清理后通道', 640, 480)],
+        remark: '已当班清理完毕并复查'
+      },
+      {
+        code: 'FZKH-004', date: d(-12), applicant: '王安全',
+        employee: '赵磊', empNo: 'MJ0932', dept: '仓储物流部', leader: '高翔',
+        content: '叉车作业超速行驶并在转弯处未鸣笛，现场测速 12km/h（限速 5km/h）。',
+        photos: [],
+        remark: '已对当事人进行叉车安全再教育'
+      },
+      {
+        code: 'FZKH-005', date: d(-20), applicant: '周敏',
+        employee: '马涛', empNo: 'MJ1207', dept: '设备动力部', leader: '孙浩',
+        content: '检修设备时未执行停电挂牌上锁（LOTO），未悬挂「禁止合闸」标识。',
+        photos: [samplePhoto('示例 · 未挂牌上锁', 640, 480)],
+        remark: '已补做 LOTO 流程，纳入本月专项培训'
+      }
+    ];
+    return raw.map(function (r, i) {
+      r.id = 'VK' + (7700 + i);
+      r.createdAt = r.date + ' 09:10';
+      r.updatedAt = r.createdAt;
+      return r;
+    });
+  }
+
   /** 组装整份数据集（每次调用返回全新对象） */
   function build() {
     return {
@@ -562,7 +612,8 @@ SD.mock = (function () {
       specialPersonnel: buildSpecialPersonnel(),
       devicePersonnel: buildDevicePersonnel(),
       workPermits: buildWorkPermits(),
-      shiftLogs: buildShiftLogs()
+      shiftLogs: buildShiftLogs(),
+      violations: buildViolations()
     };
   }
 

@@ -468,6 +468,7 @@ SD.metrics = (function () {
       certSummary: certSum,
 
       notices: data.notices || [],
+      violations: (data.violations || []).slice(),   /* 安全违章考核单（2026-11-04） */
       deptRates: deptRates(live),
       deptTrend: deptTrend(data, today),
       typeDist: typeDist(live),

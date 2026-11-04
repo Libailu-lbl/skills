@@ -32,9 +32,25 @@ SD.views.hazard = (function () {
     return '共 ' + s.totalHazards + ' 条 · 未闭环 ' + s.openCount + ' · 逾期 ' + s.overdueCount + ' · 已闭环 ' + s.closedCount;
   }
 
-  /* ---------------- 过滤 + 排序 ---------------- */
+  /* ---------------- 过滤 + 排序 ----------------
+     ★ 2026-11-04：列表默认只看**当年**（顶部年份下拉可切年 / 回到今年）。
+     归年按 foundDate；老数据缺 foundDate 回退 dueDate，再没有归入当年 ——
+     宁可归错年，也别让记录从年视图里消失。年份只是视图过滤，不动数据与 metrics。 */
+  var YEAR_FIELDS = ['foundDate', 'dueDate'];
+
+  function curYear(s) {
+    return SD.comp.yearBar.yearOf(s && s.today) || String(new Date().getFullYear());
+  }
+
+  function inYear(h, y, cur) {
+    return SD.comp.yearBar.yearOfRecord(h, YEAR_FIELDS, cur) === y;
+  }
+
   function applyFilter(s, f, sort) {
     var list = s.hazards.slice();
+    var cy = curYear(s);
+    var y = SD.comp.yearBar.yearOf(f.year) || cy;
+    list = list.filter(function (h) { return inYear(h, y, cy); });
 
     if (f.status && f.status !== 'all') {
       if (f.status === 'open') list = list.filter(function (h) { return h._open; });
@@ -400,6 +416,9 @@ SD.views.hazard = (function () {
     if (!f.severity) f.severity = 'all';
     if (!f.type) f.type = 'all';
     if (!f.dept) f.dept = 'all';
+    /* 年份：首次进入 / 刷新页面 / 脏值 一律回「当年」（不落本地存储） */
+    var CY = curYear(s);
+    if (!SD.comp.yearBar.yearOf(f.year)) f.year = CY;
     var sort = (ctx.state.sort.hazard = ctx.state.sort.hazard || { key: 'priority', dir: 'asc' });
 
     U.clear(host);
@@ -418,6 +437,16 @@ SD.views.hazard = (function () {
       cg.appendChild(chip);
     });
     bar.appendChild(cg);
+
+    /* 年份（默认当年）：切年只影响列表，不动数据；计数一起显示，避免「看着少了几条」 */
+    var yearRows = s.hazards.filter(function (h) { return inYear(h, f.year, CY); });
+    bar.appendChild(SD.comp.yearBar.build({
+      value: f.year, cur: CY,
+      years: SD.comp.yearBar.yearsOf(s.hazards, YEAR_FIELDS, CY),
+      count: yearRows.length, total: s.hazards.length,
+      tip: '按发现日期归年；缺发现日期的老记录按整改期限归年',
+      onChange: function (y) { f.year = y; ctx.refresh(); }
+    }));
 
     var spacer = U.h('<div class="spacer"></div>');
     bar.appendChild(spacer);
@@ -480,11 +509,29 @@ SD.views.hazard = (function () {
     var list = applyFilter(s, f, sort);
 
     if (!list.length) {
-      listBox.appendChild(SD.comp.state.build('empty', {
-        title: s.hazards.length ? '没有符合条件的隐患' : '还没有隐患记录',
-        desc: s.hazards.length ? '试着放宽筛选条件。' : '登记第一条隐患后，这里会按逾期、等级、截止时间自动排序。',
-        action: s.hazards.length ? null : { text: '登记第一条隐患', onClick: function () { openCreate(ctx, s); } }
-      }));
+      if (!s.hazards.length) {
+        listBox.appendChild(SD.comp.state.build('empty', {
+          title: '还没有隐患记录',
+          desc: '登记第一条隐患后，这里会按逾期、等级、截止时间自动排序。',
+          action: { text: '登记第一条隐患', onClick: function () { openCreate(ctx, s); } }
+        }));
+      } else if (!yearRows.length) {
+        /* 有数据、但这个年份一条都没有 → 说清是哪一年空着，并给回今年的出口 */
+        listBox.appendChild(SD.comp.state.build('empty', {
+          title: f.year + ' 年还没有隐患记录',
+          desc: '这个年份没有登记过隐患。用上面的年份下拉切到其它年份，或直接回到今年。',
+          action: f.year === CY ? null : {
+            text: '回到今年', icon: 'calendar',
+            onClick: function () { f.year = CY; ctx.refresh(); }
+          }
+        }));
+      } else {
+        listBox.appendChild(SD.comp.state.build('empty', {
+          title: '没有符合条件的隐患',
+          desc: '试着放宽筛选条件。',
+          action: null
+        }));
+      }
       return;
     }
 

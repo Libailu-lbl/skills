@@ -310,6 +310,8 @@ SD.api = (function () {
   var shiftLogCRUD = crud('shiftLogs', '/shift-logs', { idPrefix: 'SL' });
   var workPermitCRUD    = crud('workPermits',      '/work-permits',     { idPrefix: 'WP', codeType: 'permit' });
   var devicePersonCRUD  = crud('devicePersonnel',  '/device-personnel', { idPrefix: 'DP', codeType: 'device' });
+  /* 安全违章考核单（★ 2026-11-04）：编号 FZKH-001，一单一次违章 */
+  var violationCRUD     = crud('violations',       '/violations',       { idPrefix: 'VK', codeType: 'violation' });
 
   /**
    * 隐患作废（不是物理删除）
@@ -370,6 +372,12 @@ SD.api = (function () {
     createCertificate: certCRUD.create,
     updateCertificate: certCRUD.update,
     removeCertificate: certCRUD.remove,
+
+    // 安全违章考核单
+    listViolations: violationCRUD.list,
+    createViolation: violationCRUD.create,
+    updateViolation: violationCRUD.update,
+    removeViolation: violationCRUD.remove,
 
     listNotices: noticeCRUD.list,
     createNotice: noticeCRUD.create,

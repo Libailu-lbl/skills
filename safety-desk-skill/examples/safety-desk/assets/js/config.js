@@ -85,7 +85,9 @@ SD.CONFIG = {
     notice:      { prefix: 'FZTG', label: '通知编号',   withYear: true,  seqLen: 3 },
     special:     { prefix: 'TZZY', label: '人员编号',   withYear: false, seqLen: 3 },
     permit:      { prefix: 'FZ', prefixFrom: 'type', label: '作业票编号', withYear: false, seqLen: 7 },
-    device:      { prefix: 'TZSB', label: '设备人员编号', withYear: false, seqLen: 3 }
+    device:      { prefix: 'TZSB', label: '设备人员编号', withYear: false, seqLen: 3 },
+    /* 安全违章考核单（★ 2026-11-04）：FZKH-001，3 位序号、不带年份 */
+    violation:   { prefix: 'FZKH', label: '考核单编号', withYear: false, seqLen: 3 }
   },
 
   /* ---------- 周口径 ---------- */

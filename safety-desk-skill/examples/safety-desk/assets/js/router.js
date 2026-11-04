@@ -4,7 +4,7 @@
    · 用 hash 路由（#/hazard），刷新不丢当前页，也能直接分享某页链接
    · 导航分两组：常用（常驻，含带子菜单的「特种作业」父级）+ 更多（折叠，含报表小分组）
    · 常用：安全概览 / 待办任务 / 隐患管理 / 安全巡检 / 安全培训 / 特种作业（▸ 人员 · 作业票）
-   · 更多（折叠）：数据看板 / 通知公告 + 报表小分组（日报 / 周报）
+   · 更多（折叠）：数据看板 / 通知公告 + 报表小分组（日报 / 周报 / 交接班记录 / 违章考核单）
    · 特种作业 是「常用区里的独立父级菜单项」，点击进入落地页，其下挂两个子菜单：
        特种作业人员 / 危险作业票
    · 权限：路由可带 perm 字段，无权限时导航显示锁且点击被拦，
@@ -33,6 +33,8 @@ SD.router = (function () {
     { id: 'dailyReport',  name: '日报', icon: 'daily',  group: 'secondary', subGroup: 'reports' },
     { id: 'weeklyReport', name: '周报', icon: 'weekly', group: 'secondary', subGroup: 'reports' },
     { id: 'shiftLog', name: '安全巡检交接班记录', icon: 'clipboard', group: 'secondary', subGroup: 'reports' },
+    /* 安全违章考核单（★ 2026-11-04）：一单一次违章，编号 FZKH-001，默认看全年 */
+    { id: 'violation', name: '安全违章考核单', icon: 'file', group: 'secondary', subGroup: 'reports' },
 
     /* 特种作业：常用区里的独立父级菜单项（带子菜单与权限门禁），
        子项由 navItem 递归渲染在父级下方，不单独进组 */

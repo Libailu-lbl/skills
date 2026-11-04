@@ -82,6 +82,8 @@ SD.store = (function () {
       if (!Array.isArray(mem.data.devicePersonnel)) mem.data.devicePersonnel = [];
       // 交接班记录（2026-10-25 新增）：老快照没有这个集合时补空数组
       if (!Array.isArray(mem.data.shiftLogs)) mem.data.shiftLogs = [];
+      // 安全违章考核单（2026-11-04 新增）：老快照没有这个集合时补空数组
+      if (!Array.isArray(mem.data.violations)) mem.data.violations = [];
       if (!Array.isArray(mem.data.specialPersonnel)) mem.data.specialPersonnel = [];
       if (!Array.isArray(mem.data.certificates)) mem.data.certificates = [];
       if (!Array.isArray(mem.data.notices)) mem.data.notices = [];
@@ -253,6 +255,7 @@ SD.store = (function () {
       trainings: Array.isArray(d.trainings) ? d.trainings : [],
       certificates: Array.isArray(d.certificates) ? d.certificates : [],
       notices: Array.isArray(d.notices) ? d.notices : [],
+      violations: Array.isArray(d.violations) ? d.violations : [],
       trend: Array.isArray(d.trend) ? d.trend : [],
       deptTrend: Array.isArray(d.deptTrend) ? d.deptTrend : [],
       specialPersonnel: Array.isArray(d.specialPersonnel) ? d.specialPersonnel : [],

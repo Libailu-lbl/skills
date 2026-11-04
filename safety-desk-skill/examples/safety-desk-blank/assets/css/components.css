@@ -371,6 +371,23 @@ table.tbl tr.row-warn td:first-child{ box-shadow:inset 3px 0 0 var(--lv-large); 
 .chip:hover{ border-color:var(--brand-line); color:var(--brand); }
 .chip.on{ background:var(--brand); border-color:var(--brand); color:#fff; font-weight:600; }
 
+/* 危险作业票：月份切换条（2026-10-30）
+   与 .filters 同一套外观，只补「‹ 月份 › [回到本月] …… 本月共 N 张」的排布 */
+.month-bar .month-nav{ display:flex; align-items:center; gap:6px; }
+.month-bar .month-nav .btn{ min-width:34px; padding:0 10px; font-size:16px; line-height:1; }
+.month-bar input[type="month"]{ width:150px; }
+
+/* 交接班记录：列表按月查看（★ 2026-11-04）
+   月份控件挂在卡片标题右侧，外观与危险作业票的月条一致，只是不占整行 */
+.sl-monthbar .month-nav{ display:flex; align-items:center; gap:6px; }
+.sl-monthbar .month-nav .btn{ min-width:34px; padding:0 10px; font-size:16px; line-height:1; }
+.sl-monthbar input[type="month"]{ width:150px; }
+
+/* 「按年查看」控件（★ 2026-11-04）：隐患管理 / 安全巡检 / 安全培训 / 通知公告四页共用，
+   挂在各自的筛选条里（.filters 内），紧挨 chip 组，不额外占一整行 */
+.year-fg .ctl-select{ width:auto; min-width:104px; }
+.year-fg .year-count{ color:var(--text-3); font-size:12px; white-space:nowrap; }
+
 /* ---------------- Toast ---------------- */
 .toast-root{
   position:fixed; left:50%; bottom:28px; transform:translateX(-50%);
@@ -789,6 +806,9 @@ table.tbl tr.row-warn td:first-child{ box-shadow:inset 3px 0 0 var(--lv-large); 
 }
 .sl-ev-del:hover{ color:#fff; background:#b42318; border-color:#b42318; }
 .sl-ev-add{ align-self:flex-start; }
+/* 备注区按钮组：＋添加一条 / 从每日记录导入 并排 */
+.sl-ev-tool{ display:flex; gap:6px; flex-wrap:wrap; }
+.sl-ev-import{ align-self:flex-start; }
 .sl-ev-empty{ font-size:12px; color:var(--text-3); line-height:1.75; }
 .sl-table .sl-foot{ font-size:12px; line-height:1.6; }
 
@@ -943,3 +963,29 @@ table.tbl tr.row-warn td:first-child{ box-shadow:inset 3px 0 0 var(--lv-large); 
 }
 .xio-tb th{ background:#f7f9fc; font-weight:600; position:sticky; top:0; }
 .xio-tb tr:last-child td{ border-bottom:0; }
+
+/* 危险作业票月份条：窄屏整行铺开，按钮补到 44px 触控尺寸（铁律 4） */
+@media (max-width: 760px){
+  .month-bar{ padding:8px 10px; }
+  .month-bar .month-nav{ width:100%; }
+  .month-bar input[type="month"]{ flex:1 1 auto; width:auto; min-height:44px; font-size:16px; }
+  .month-bar .month-nav .btn{ min-width:44px; min-height:44px; }
+  .month-bar > span{ width:100%; white-space:normal; }
+}
+
+/* 交接班月份控件：窄屏整行铺开，按钮补到 44px 触控尺寸（铁律 4） */
+@media (max-width: 760px){
+  .sl-history .card-head{ flex-wrap:wrap; }
+  .sl-monthbar{ width:100%; }
+  .sl-monthbar .month-nav{ width:100%; }
+  .sl-monthbar input[type="month"]{ flex:1 1 auto; width:auto; min-height:44px; font-size:16px; }
+  .sl-monthbar .month-nav .btn{ min-width:44px; min-height:44px; }
+}
+
+/* 年份控件：窄屏整行铺开，下拉与按钮补到 44px 触控尺寸（铁律 4） */
+@media (max-width: 760px){
+  .year-fg{ width:100%; }
+  .year-fg .ctl-select{ flex:1 1 auto; min-height:44px; }
+  .year-fg .btn{ min-height:44px; }
+  .year-fg .year-count{ width:100%; white-space:normal; }
+}

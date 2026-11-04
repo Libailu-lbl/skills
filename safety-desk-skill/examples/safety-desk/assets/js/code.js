@@ -26,6 +26,9 @@
      · 各类型序号池仍彼此独立（隐患 FZYH-0000001 与作业票 FZDZ-0000001 可并存，
        唯一性只在同类型内比较），互不借号、互不撞号
 
+   ★ 2026-11-04 起新增第九类：**安全违章考核单 FZKH-001**（前缀 FZKH / 无年份 / 3 位序号），
+     规则写在 config.js 的 violation 一项，集合是 violations（见 views/violation.js）。
+
    ★ 2026-10-28 起：危险作业票前缀改为**按作业类型动态生成**：
       前缀 = 固定前缀 FZ + 作业类型名称前两个汉字的拼音首字母（大写）
       例：吊装作业 → DZ → FZDZ-0000001；动火作业 → DH → FZDH-0000001
@@ -72,7 +75,8 @@ SD.code = (function () {
     notice: 'notices',
     special: 'specialPersonnel',
     device: 'devicePersonnel',
-    permit: 'workPermits'
+    permit: 'workPermits',
+    violation: 'violations'
   };
 
   var DEFAULT_RULE = { prefix: 'FZ', label: '编号', withYear: false, seqLen: 7 };

@@ -55,11 +55,13 @@ SD.views.shiftLog = (function () {
 
   /* 列宽：直接照抄原表 Excel 的列宽（字符数 4.41 / 9 / 69.75 / 5.66 / 34.08）——
      **打印件与导出 Excel 用这份**，跟原表一模一样。
+     ★ 2026-11-04 按用户要求微调：序号列 4.41 → 6.5（「序号」两字打印预览时
+       刚好一横排、不再挤在窄列里），备注列 34.08 → 40（加宽一点）。
      界面版另外一份：检查情况列放宽到能整整齐齐放下「√ 正常」四个字
      （原表 5.66 个字符宽只够一个「√」，界面上把文字挤没了才做的调整）。
      两份都是从 COLW 派生出来的，改一处不会让界面和出件对不上。 */
-  var COLW = [4.41, 9, 78, 5.66, 34.08];
-  var COLW_UI = [4.41, 9, 82, 11, 34.08];   /* 界面：检查情况列按文字宽度放宽 */
+  var COLW = [6.5, 9, 78, 5.66, 40];
+  var COLW_UI = [6.5, 9, 82, 11, 40];   /* 界面：检查情况列按文字宽度放宽 */
   /* 「检查内容」列从原表的 69.75 加宽到 78：最长的一条（压力容器…）要 74 个字符单位，
      69.75 放不下会折成两行，原表行高又锁死 20.5pt → 第二行直接被切掉。
      加宽后最长的一条一行正好放下，19 行全部维持 20.5pt，不用加高。 */
@@ -156,6 +158,40 @@ SD.views.shiftLog = (function () {
     return o;
   }
 
+  /* ---------- 月份视图（★ 2026-11-04 起：交接班记录列表按月展示，默认当月） ----------
+     归月口径：取记录 `date` 所在月（'YYYY-MM'）。`date` 缺失的旧数据回退 `updatedAt`，
+     再没有就归入「当月」，避免记录从月视图里整个消失。
+     月份只是**列表的视图过滤**：不写库、不改数据、不影响顶部日期/班次编辑区，
+     也不影响打印与导出（打印/导出仍按当前编辑的那一天出件）。 */
+  function monthOf(dateStr) {
+    var m = String(dateStr == null ? '' : dateStr).slice(0, 7);
+    var hit = /^(\d{4})-(\d{2})$/.exec(m);
+    if (!hit) return '';
+    var mo = Number(hit[2]);
+    /* 「2019-13」这种脏值也要判无效：<input type="month"> 认不了，列表会莫名空掉 */
+    return (mo >= 1 && mo <= 12) ? m : '';
+  }
+
+  /** 一条记录归哪个月（见上面的口径说明） */
+  function monthOfRec(r, fallback) {
+    return monthOf(r && r.date) || monthOf(r && r.updatedAt) || fallback;
+  }
+
+  /** '2026-11' → '2026年11月' */
+  function fmtMonth(m) {
+    if (!m) return '';
+    return m.slice(0, 4) + '年' + Number(m.slice(5, 7)) + '月';
+  }
+
+  /** 月份加减，跨年自动处理：('2026-01', -1) → '2025-12' */
+  function shiftMonth(m, delta) {
+    var y = Number(m.slice(0, 4));
+    var mo = Number(m.slice(5, 7)) + delta;
+    y += Math.floor((mo - 1) / 12);
+    mo = ((mo - 1) % 12 + 12) % 12 + 1;
+    return y + '-' + (mo < 10 ? '0' : '') + mo;
+  }
+
   function statOf(rec) {
     var bad = (rec.checks || []).filter(function (x) { return x === 'bad'; }).length;
     var ok = (rec.checks || []).filter(function (x) { return x === 'ok'; }).length;
@@ -171,15 +207,81 @@ SD.views.shiftLog = (function () {
   }
 
   /* ---------------- 渲染 ---------------- */
+  /* ★ 每日安全记录 → 备注事件 的映射（2026-11-03）
+     放在 IIFE 顶层，方便测试与复用；importEventsFromDaily 在 render 内调用它。 */
+  /** 把「每日安全记录」的二维数组整理成指定日期的事件文本数组 */
+  function dailyEventsFor(rows, date) {
+    if (!Array.isArray(rows) || !rows.length) return [];
+    /* 表头行：第 2 行（A2=日期 B2=星期 C2=班次 D2=主要工作 E2=完成情况 F2=备注）；
+       数据从第 3 行起。列按 0 基：A=0 B=1 C=2 D=3 E=4 F=5。 */
+    var out = [];
+    var curDay = '';            // 当前遍历到的日期（'YYYY-MM-DD'）
+    var inTarget = false;       // 是否落在目标日期这一天里
+    var today = date;           // 目标日期（如 '2026-11-01'）
+
+    rows.forEach(function (r, idx) {
+      if (!Array.isArray(r)) return;
+      /* A 列有值 → 可能是日期（序列号字符串或日期串），切换「当前日」。
+         注意：真实表里「日期行」本身也带一条工作内容（D 列），
+         所以先判断并更新 curDay，再往下统一取 D/E/F，不在这里 return。 */
+      var a = String(r[0] == null ? '' : r[0]).trim();
+      if (a && a !== '日期') {
+        var d = normalizeDailyDate(a);
+        if (d) { curDay = d; inTarget = (d === today); }
+        else { inTarget = false; return; }   // A 列有值但不是日期 → 结束一天，未命中
+      }
+      /* 落在目标日期内才取 D/E/F */
+      if (!inTarget) return;
+      var work = String(r[3] == null ? '' : r[3]).trim();
+      if (!work) return;                       // 主要工作为空的行跳过
+      var done = String(r[4] == null ? '' : r[4]).trim();
+      var note = String(r[5] == null ? '' : r[5]).trim();
+      out.push(composeDailyEvent(work, done, note));
+    });
+
+    return out;
+  }
+
+  /** 日期列值 → 'YYYY-MM-DD'；序列号走 excelDate，已是日期串则原样 */
+  function normalizeDailyDate(v) {
+    var s = String(v).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(s)) {
+      var p = s.split('/');
+      return p[0] + '-' + (p[1].length < 2 ? '0' + p[1] : p[1]) + '-' + (p[2].length < 2 ? '0' + p[2] : p[2]);
+    }
+    if (/^\d+$/.test(s) && SD.comp.xlsxReader.excelDate) {
+      return SD.comp.xlsxReader.excelDate(Number(s));
+    }
+    return '';
+  }
+
+  /** 拼一条事件：主要工作（完成情况）＋备注 */
+  function composeDailyEvent(work, done, note) {
+    var t = work;
+    if (done && done !== '进行中') t += '（' + done + '）';
+    if (note) t += ' — ' + note;
+    return t;
+  }
+
   function render(host, ctx) {
     var s = ctx.state.summary || {};
     var logs = s.shiftLogs || [];
     var ro = readOnly();
 
+    var CUR_MONTH = monthOf(U.today());
+
     var f = ctx.state.filters.shift;
     if (!f || !f.date) {
-      f = ctx.state.filters.shift = { date: U.today(), shift: (shifts()[0] || {}).v || 'day' };
+      f = ctx.state.filters.shift = {
+        date: U.today(),
+        shift: (shifts()[0] || {}).v || 'day',
+        month: CUR_MONTH
+      };
     }
+    /* 月份：首次进入 / 刷新页面 / 脏值 一律回「当月」（★ 2026-11-04）
+       —— 记住刷新前的月份会让用户下次打开看不到当月的记录，违背「默认当月」。 */
+    if (!monthOf(f.month)) f.month = CUR_MONTH;
 
     var cur = normalize(findRec(logs, f.date, f.shift), f.date, f.shift);
 
@@ -245,8 +347,8 @@ SD.views.shiftLog = (function () {
     printBtn.addEventListener('click', function () { openPrint(cur); });
     bar.appendChild(printBtn);
 
-    var xlsBtn = U.h('<button class="btn ghost" title="导出与屏幕同版式的 Excel，可直接打印">' +
-      SD.icons.get('download', 14) + '导出 Excel</button>');
+    var xlsBtn = U.h('<button class="btn ghost" title="导出当日白班、夜班两张表（各一个 sheet，可直接双面打印）">' +
+      SD.icons.get('download', 14) + '导出 Excel（白夜班）</button>');
     xlsBtn.addEventListener('click', function () { exportXlsx(cur); });
     bar.appendChild(xlsBtn);
 
@@ -405,6 +507,8 @@ SD.views.shiftLog = (function () {
       }
 
       if (!ro) {
+        var tool = U.h('<div class="sl-ev-tool"></div>');
+
         var add = U.h('<button class="btn sm ghost sl-ev-add">＋ 添加一条</button>');
         add.addEventListener('click', function () {
           cur.events.push('');
@@ -412,32 +516,117 @@ SD.views.shiftLog = (function () {
           var last = list.querySelectorAll('.sl-ev-inp');
           if (last.length) last[last.length - 1].focus();
         });
-        box.appendChild(add);
+        tool.appendChild(add);
+
+        /* 从「每日安全记录」表格导入当天的备注事件（★ 2026-11-03）
+           参照《每日安全记录.xlsx》「每日简记」表：A 列日期只在每天第一行出现，
+           B 星期 / C 班次 / D 主要工作 / E 完成情况 / F 备注；
+           导入时把「所选日期」这一天的所有行按 D/E/F 拼成事件，逐条填入备注。 */
+        var imp = U.h('<button class="btn sm ghost sl-ev-import" title="从「每日安全记录.xlsx」导入所选日期当天的备注事件">' +
+          SD.icons.get('upload', 13) + '从每日记录导入</button>');
+        var fileIn = U.h('<input type="file" accept=".xlsx,.xls,.csv" style="display:none">');
+        imp.addEventListener('click', function () { fileIn.click(); });
+        fileIn.addEventListener('change', function () {
+          importEventsFromDaily(fileIn.files && fileIn.files[0]);
+          fileIn.value = '';
+        });
+        tool.appendChild(imp);
+        tool.appendChild(fileIn);
+
+        box.appendChild(tool);
       }
 
       paintList();
       return box;
     }
 
+    /** 从每日安全记录表格导入当天事件（见 buildEvents 里 imp 按钮的说明） */
+    function importEventsFromDaily(file) {
+      if (!file) return;
+      if (!SD.comp.xlsxReader) { U.toast('读取 Excel 组件未就绪', 'err'); return; }
+      U.toast('正在读取表格…');
+      SD.comp.xlsxReader.readFile(file).then(function (res) {
+        var rows = (res && res.rows) || [];
+        var events = dailyEventsFor(rows, cur.date);
+        if (!events.length) {
+          U.toast('没在表格里找到 ' + cur.date + ' 的记录，或当天「主要工作」为空', 'err');
+          return;
+        }
+        /* 追加还是覆盖？默认追加到现有事件末尾，避免误删已手写的内容；
+           每次导入的行在文件内去重、且与已有事件去重后再追加 */
+        var have = {};
+        cur.events.forEach(function (x) { var k = String(x || '').trim(); if (k) have[k] = true; });
+        var added = 0;
+        events.forEach(function (t) {
+          if (have[t]) return;
+          cur.events.push(t);
+          have[t] = true;
+          added++;
+        });
+        paintList();
+        U.toast(added ? ('已导入 ' + added + ' 条事件（当天共 ' + events.length + ' 条，重复已跳过）') : '当天内容与现有备注一致，没有新增');
+      }, function (e) {
+        U.toast('导入失败：' + (e && e.message ? e.message : e), 'err');
+      });
+    }
+
     paintSheet();
     paintStatus();
 
-    /* ---------- 历史记录 ---------- */
-    var card = U.h('<section class="card sl-history"><div class="card-head">' +
-      '<div><h3>交接班记录</h3><div class="sub">按日期倒序；同一天同一班次只保留一份，点「打开」可查看与补录</div></div></div>' +
+    /* ---------- 历史记录（★ 2026-11-04 起按月展示：默认当月，可切月 / 上下月 / 回到本月） ---------- */
+    var monthList = logs.filter(function (r) { return monthOfRec(r, CUR_MONTH) === f.month; });
+
+    function goMonth(m) {
+      if (!monthOf(m) || m === f.month) return;
+      f.month = m;
+      ctx.refresh();          // 整页重绘：月份条 / 计数 / 列表都跟着走
+    }
+
+    var headSub = fmtMonth(f.month) + ' 共 ' + monthList.length + ' 条' +
+      (logs.length !== monthList.length ? ' · 全部 ' + logs.length + ' 条' : '') +
+      '；同一天同一班次只保留一份，可点「打开」补录';
+
+    var card = U.h('<section class="card sl-history">' +
+      '<div class="card-head">' +
+        '<div><h3>交接班记录</h3><div class="sub">' + U.esc(headSub) + '</div></div>' +
+        '<div class="sl-monthbar">' +
+          '<div class="month-nav">' +
+            '<button type="button" class="btn sm ghost js-m-prev" title="上一月" aria-label="上一月">‹</button>' +
+            '<input type="month" class="input js-m-input" value="' + U.esc(f.month) + '" aria-label="选择月份">' +
+            '<button type="button" class="btn sm ghost js-m-next" title="下一月" aria-label="下一月">›</button>' +
+            (f.month === CUR_MONTH ? '' : '<button type="button" class="btn sm ghost js-m-now">回到本月</button>') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
       '<div class="js-body"></div></section>');
     var hbody = card.querySelector('.js-body');
     host.appendChild(card);
 
-    var sorted = logs.slice().sort(function (a, b) {
+    card.querySelector('.js-m-prev').addEventListener('click', function () { goMonth(shiftMonth(f.month, -1)); });
+    card.querySelector('.js-m-next').addEventListener('click', function () { goMonth(shiftMonth(f.month, 1)); });
+    var mInput = card.querySelector('.js-m-input');
+    mInput.addEventListener('change', function () { goMonth(mInput.value); });
+    var mNow = card.querySelector('.js-m-now');
+    if (mNow) mNow.addEventListener('click', function () { goMonth(CUR_MONTH); });
+
+    var sorted = monthList.slice().sort(function (a, b) {
       if (a.date === b.date) return shiftName(a.shift) > shiftName(b.shift) ? 1 : -1;
       return String(b.date) > String(a.date) ? 1 : -1;
     });
 
-    if (!sorted.length) {
+    if (!logs.length) {
       hbody.appendChild(SD.comp.state.build('empty', {
         title: '还没有交接班记录',
-        desc: ro ? '切换日期后点开当天的记录即可查看。' : '上方表格填好后点「保存记录」，这里就会按日期列出来。'
+        desc: ro ? '切换日期后点开当天的记录即可查看。' : '上方表格填好后点「保存记录」，这里就会按月列出来。'
+      }));
+    } else if (!monthList.length) {
+      /* 有记录、但这个月没有 → 说清是哪个月空着，并给「回到本月」的出口 */
+      hbody.appendChild(SD.comp.state.build('empty', {
+        title: fmtMonth(f.month) + '还没有交接班记录',
+        desc: '这个月没有记录。用上面的月份选择器切到其它月份查看，或直接回到本月。',
+        action: f.month === CUR_MONTH ? null : {
+          text: '回到本月', icon: 'calendar', onClick: function () { goMonth(CUR_MONTH); }
+        }
       }));
     } else {
       hbody.appendChild(SD.comp.table.build({
@@ -514,6 +703,11 @@ SD.views.shiftLog = (function () {
 
     var p = cur.id ? SD.api.updateShiftLog(cur.id, payload) : SD.api.createShiftLog(payload);
     p.then(function () {
+      /* 保存的这一天不在当前查看的月份里 → 把列表切到那份记录所在的月，
+         免得出现「保存成功，列表里却看不见」（★ 2026-11-04 按月展示后新增） */
+      var fl = (SD.app && SD.app.state && SD.app.state.filters) ? SD.app.state.filters.shift : null;
+      var sm = monthOf(payload.date);
+      if (fl && sm) fl.month = sm;
       U.toast(cur.id ? '已保存（覆盖本班次记录）' : '已保存本班次记录', 'ok');
       SD.app.reload();
     }, function (e) {
@@ -716,7 +910,13 @@ SD.views.shiftLog = (function () {
   }
 
   /* ---------------- 导出 Excel（与屏幕同版式） ---------------- */
-  function exportXlsx(rec) {
+  /** 把某一天某一班次的记录构造成一张「交接班记录」sheet（导出用）。
+      rec 为 normalize 后的记录对象；sheetName 是这张 sheet 的标签名（如「11-01 白班」）。
+      ★ 2026-11-03：从 exportXlsx 里抽出来，让「白班 + 夜班」两张表各调一次。 */
+  /** 把某一班次的记录构造成「一张交接班表」的行数组（不含 sheet 外壳）。
+      ★ 2026-11-03 从 buildSheet 里抽出：白班 + 夜班两张表放同一 sheet 时，
+      concat 两个 buildRows 即可，xlsxWriter 会按数组下标自动重排行号与合并引用。 */
+  function buildRows(rec) {
     var head = ['序号', '检查项', '检查内容', '检查情况', '备   注\n（当班工作情况及其它情况）'];
     var rows = [];
     /* 行高直接照抄原表：第 1 行 30pt（空行放左上角标识）/ 标题 27 / 抬头 22 / 表头 30.5 /
@@ -778,9 +978,16 @@ SD.views.shiftLog = (function () {
     });
     rows.push([{ v: '    注：检查情况正常打“√”，异常打“×”并如实记录异常情况。', font: FONT, align: 'left', valign: 'center', mergeAcross: 4, size: 11, h: 17.5 }]);
 
-    var sheet = {
-      name: '交接班记录',
-      /* 列宽照抄原表：4.41 / 9 / 69.75 / 5.66 / 34.08 */
+    return rows;
+  }
+
+  /** 把某一天某一班次的记录构造成一张「交接班记录」sheet（导出用）。
+      rec 为 normalize 后的记录对象；sheetName 是这张 sheet 的标签名（如「11-01 白班」）。 */
+  function buildSheet(rec, sheetName) {
+    var rows = buildRows(rec);
+    return {
+      name: sheetName,
+      /* 列宽：照原表并微调（序号 6.5 / 检查项 9 / 检查内容 78 / 检查情况 5.66 / 备注 40） */
       cols: COLW.map(function (w) { return { width: w }; }),
       rows: rows,
       /* 出件就是为了打印：A4 **横向** + **常规页边距**（Excel「普通」预设 0.7/0.75 英寸）
@@ -794,15 +1001,43 @@ SD.views.shiftLog = (function () {
         ? { data: SD.BRAND_LOGO.base64, w: LOGO_W, h: LOGO_H, col: 0, row: 0, colOff: 6350, rowOff: 85725 }
         : null
     };
+  }
+
+  /** 导出 Excel：当日「白班 + 夜班」两张表各出一个 sheet（★ 2026-11-04 修正）
+      每个 sheet 各自 fitToPage 缩放到恰好一页 —— 白班 sheet 第 1 页、夜班 sheet 第 2 页，
+      双击打印选「双面打印」即正面白班、反面夜班。
+      ★ 为什么不用「一个 sheet + 行分页符」：fitToPage（缩成一页）与 rowBreaks（行分页）
+        在 OOXML 里互斥——设了 fitToPage 会把两张表 48 行硬缩成一页、分页符失效；
+        不设 fitToPage 则每张 24 行的表本身就超一页可印高度、会裂成 2~3 页。
+        所以「一页一张表 + 双面打印」只能靠两个 sheet 各 fitToPage 一页实现。
+      某个班次当天还没记录时，仍导一张空表（检查项照旧、勾选/备注留空、巡检人员留手签位）。 */
+  function exportXlsx(rec) {
+    var logs = (SD.app && SD.app.state && SD.app.state.summary)
+      ? (SD.app.state.summary.shiftLogs || []): [];
+
+    var date = rec.date;
+    var dayRec = normalize(findRec(logs, date, 'day'), date, 'day');
+    var nightRec = normalize(findRec(logs, date, 'night'), date, 'night');
+
+    var sheets = [
+      buildSheet(dayRec, date + ' 白班'),
+      buildSheet(nightRec, date + ' 夜班')
+    ];
 
     try {
-      var blob = SD.comp.xlsxWriter.build([sheet]);
-      SD.comp.xlsxWriter.download(blob, '安全巡检交接班记录-' + rec.date + '-' + shiftName(rec.shift) + '.xlsx');
-      U.toast('已导出 Excel（巡查人员留空）', 'ok');
+      var blob = SD.comp.xlsxWriter.build(sheets);
+      SD.comp.xlsxWriter.download(blob, '安全巡检交接班记录-' + date + '-白夜班.xlsx');
+      U.toast('已导出当日白班、夜班两张表（两个 sheet，各一页，可双面打印）', 'ok');
     } catch (e) {
       U.toast('导出失败：' + (e && e.message ? e.message : e), 'err');
     }
   }
 
-  return { name: '安全巡检交接班记录', sub: sub, render: render, ITEMS: ITEMS, CHECKS: CHECKS };
+  return {
+    name: '安全巡检交接班记录', sub: sub, render: render, ITEMS: ITEMS, CHECKS: CHECKS,
+    /* 导入辅助（测试入口，便于冒烟校验「每日安全记录 → 备注事件」的映射） */
+    _dailyEventsFor: dailyEventsFor,
+    _normalizeDailyDate: normalizeDailyDate,
+    _composeDailyEvent: composeDailyEvent
+  };
 })();

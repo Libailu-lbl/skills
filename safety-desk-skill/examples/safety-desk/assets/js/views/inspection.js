@@ -44,10 +44,12 @@ SD.views.inspection = (function () {
        完成时若没有执行记录会自动补一条默认记录（现场情况可随后补填） */
     { name: 'status', label: '状态', type: 'select', required: true, options: function () { return SD.mock.DICT.inspectStatus; }, def: 'planned' },
     { name: 'remark', label: '备注', type: 'textarea', full: true, rows: 2, placeholder: '可写巡检重点、携带工具等' },
-    /* 巡查照片：登记 / 编辑时上传，列表里点「区域」即可看大图（与隐患标题同一套交互） */
+    /* 巡查照片：登记 / 编辑时上传，列表里点「区域」即可看大图（与隐患标题同一套交互）
+       ★ 2026-10-30 起单次最多 18 张（原 6 张）；存储走 photoVault（原图外置到 IndexedDB），
+         所以放宽张数不会把 localStorage 撑爆，列表与打印只读引用 */
     {
-      name: 'photos', label: '巡查照片', type: 'photos', full: true, max: 6,
-      help: '最多 6 张，自动压到 1000px；存进巡检记录，列表里点「区域」即可查看'
+      name: 'photos', label: '巡查照片', type: 'photos', full: true, max: 18,
+      help: '最多 18 张，可一次性多选；原图保存（大图自动外置，不压缩），列表里点「区域」即可查看'
     }
   ];
 
@@ -209,8 +211,21 @@ SD.views.inspection = (function () {
   }
 
   /* ---------------- 过滤 + 排序 ----------------
-     范围筛选（本周/全部/按状态）→ 关键词搜索 → 排序（默认计划日期升序，点表头切换） */
+     范围筛选（本周/全部/按状态）→ 年份 → 关键词搜索 → 排序（默认计划日期升序，点表头切换）
+
+     ★ 2026-11-04：列表默认只看**当年**（年份下拉可切年 / 回到今年），归年按 scheduledDate。
+     例外：「本周」视图**不套年份**——跨年那一周（如 12-29~01-04）硬套年份会把上一年那几天
+     砍掉，与「本周完成率」指标卡对不上；在「本周」下改年份会自动切到「全部」，让选择真的生效。 */
   var STATUS_RANK = { planned: 0, rescheduled: 1, done: 2, cancelled: 3 };
+  var YEAR_FIELDS = ['scheduledDate'];
+
+  function curYear(s) {
+    return SD.comp.yearBar.yearOf(s && s.today) || String(new Date().getFullYear());
+  }
+
+  function inYear(t, y, cur) {
+    return SD.comp.yearBar.yearOfRecord(t, YEAR_FIELDS, cur) === y;
+  }
 
   function applyFilter(s, f, sort) {
     var list = s.inspections.slice();
@@ -218,8 +233,12 @@ SD.views.inspection = (function () {
     if (f.range === 'week') {
       var w = s.inspectionWeek;
       list = list.filter(function (t) { return t.scheduledDate >= w.weekStart && t.scheduledDate <= w.weekEnd; });
-    } else if (f.range !== 'all') {
-      list = list.filter(function (t) { return t.status === f.range; });
+    } else {
+      /* 年份过滤（「本周」以外才生效，见上面的说明） */
+      var cy = curYear(s);
+      var y = SD.comp.yearBar.yearOf(f.year) || cy;
+      list = list.filter(function (t) { return inYear(t, y, cy); });
+      if (f.range !== 'all') list = list.filter(function (t) { return t.status === f.range; });
     }
     if (f.q) {
       var q = String(f.q).toLowerCase();
@@ -248,6 +267,9 @@ SD.views.inspection = (function () {
     var f = (ctx.state.filters.insp = ctx.state.filters.insp || {});
     if (!f.range) f.range = 'week';
     if (f.q == null) f.q = '';
+    /* 年份：首次进入 / 刷新页面 / 脏值 一律回「当年」（不落本地存储） */
+    var CY = curYear(s);
+    if (!SD.comp.yearBar.yearOf(f.year)) f.year = CY;
     var sort = (ctx.state.sort.insp = ctx.state.sort.insp || { key: 'scheduledDate', dir: 'asc' });
 
     U.clear(host);
@@ -283,6 +305,22 @@ SD.views.inspection = (function () {
       });
       cg.appendChild(chip);
     });
+
+    /* 年份（默认当年）：挂在 chip 组后面。
+       在「本周」视图下改年份 → 自动切到「全部」，否则选了也不生效（本周就那一周）。 */
+    var yearRows = s.inspections.filter(function (t) { return inYear(t, f.year, CY); });
+    bar.insertBefore(SD.comp.yearBar.build({
+      value: f.year, cur: CY,
+      years: SD.comp.yearBar.yearsOf(s.inspections, YEAR_FIELDS, CY),
+      count: yearRows.length, total: s.inspections.length,
+      tip: '按计划日期归年；「本周」视图不受年份限制',
+      onChange: function (y) {
+        f.year = y;
+        if (f.range === 'week') f.range = 'all';
+        ctx.refresh();
+      }
+    }), bar.querySelector('.spacer'));
+
     var spacer = bar.querySelector('.spacer');
     spacer.appendChild(U.h('<span class="t-3 t-sm">本周起算：周一</span>'));
 
@@ -311,11 +349,29 @@ SD.views.inspection = (function () {
 
     var noData = !s.inspections.length;
     if (!list.length) {
-      listBox.appendChild(SD.comp.state.build('empty', {
-        title: noData ? '还没有安全巡检任务' : '没有符合条件的巡检任务',
-        desc: noData ? '新增第一条巡检后，这里会按计划日期排序并计入本周完成率。' : (f.q ? '没有匹配「' + f.q + '」的巡检，换个关键词或清空搜索。' : '换个筛选条件看看。'),
-        action: noData ? { text: '新增第一条巡检', onClick: function () { openForm(ctx, null); } } : null
-      }));
+      if (noData) {
+        listBox.appendChild(SD.comp.state.build('empty', {
+          title: '还没有安全巡检任务',
+          desc: '新增第一条巡检后，这里会按计划日期排序并计入本周完成率。',
+          action: { text: '新增第一条巡检', onClick: function () { openForm(ctx, null); } }
+        }));
+      } else if (f.range !== 'week' && !yearRows.length) {
+        /* 有数据、但这个年份一条都没有 → 说清是哪一年空着，并给回今年的出口 */
+        listBox.appendChild(SD.comp.state.build('empty', {
+          title: f.year + ' 年还没有巡检任务',
+          desc: '这个年份没有排过巡检计划。用年份下拉切到其它年份，或直接回到今年。',
+          action: f.year === CY ? null : {
+            text: '回到今年', icon: 'calendar',
+            onClick: function () { f.year = CY; ctx.refresh(); }
+          }
+        }));
+      } else {
+        listBox.appendChild(SD.comp.state.build('empty', {
+          title: '没有符合条件的巡检任务',
+          desc: f.q ? '没有匹配「' + f.q + '」的巡检，换个关键词或清空搜索。' : '换个筛选条件看看。',
+          action: null
+        }));
+      }
       return;
     }
 

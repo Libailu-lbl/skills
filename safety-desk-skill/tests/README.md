@@ -27,7 +27,7 @@ node tests/smoke_shift.js http://127.0.0.1:8126/index.html    # 终端 B
 
 ## 套件清单
 
-### 示例版（`examples/safety-desk`，共 1355 项）
+### 示例版（`examples/safety-desk`，共 1621 项）
 
 | 套件 | 项数 | 覆盖 |
 |---|---|---|
@@ -43,17 +43,24 @@ node tests/smoke_shift.js http://127.0.0.1:8126/index.html    # 终端 B
 | `smoke_reports.js` | 64 | 日报/周报聚合口径与导出 |
 | `smoke_security.js` | 57 | 清空专用密码、30 分钟空闲锁、签名位 |
 | `smoke_settings.js` | 25 | 工作台名称自定义、侧栏快捷入口 |
-| `smoke_shift.js` | 155 | 交接班记录：19 行、打印留空、Excel 行位/合并/边框、角色门禁 |
-| `smoke_special.js` | 33 | 特种作业导航层级、权限门禁、作业票流转 |
+| `smoke_shift.js` | 167 | 交接班记录：19 行、打印留空、白夜班同 Excel、按月查看、列宽、角色门禁 |
+| `smoke_shift_import.js` | 15 / 22 | 交接班备注「从每日记录导入」：日期归一、事件拼接、只取当天；传业务表格路径（第 3 个参数）再验真实 11-01 提取 10 条（22 项） |
+| `smoke_shift_month.js` | 42 | 交接班列表按月：默认当月、切月/回到本月、空月空态、保存跨月自动切月 |
+| `smoke_monthview.js` | 45 | 作业票月视图 + 巡检照片上限 18 张 |
+| `smoke_yearview.js` | 99 | 隐患/巡检/培训/通知「默认当年 + 年份下拉 + 时间范围」 |
+| `smoke_violation.js` | 52 | 安全违章考核单：编号 FZKH-001、默认全年、点编号看照片、增改删、受限拦截 |
+| `smoke_special.js` | 34 | 特种作业导航层级、权限门禁、作业票流转（含按月视图） |
 | `smoke_training.js` | 34 | 培训照片与证书 |
 | `smoke_trend.js` | 25 | 各部门趋势：12 个月窗口、兜底口径自洽 |
 | `smoke_vault.js` | 29 | 不压缩 + IndexedDB 外置 + 上传护栏 |
 | `smoke_ocr.js` | 66 | 证件识别解析器 + 接口兜底 + 界面端到端 |
 
-### 空白版（`examples/safety-desk-blank`，共 697 项）
+### 空白版（`examples/safety-desk-blank`，共 907 项）
 
 `smoke_blank`(136) / `smoke_permitcode`(52) / `smoke_device`(44) / `smoke_excelio`(89) /
-`smoke_shift`(155) / `smoke_security`(57) / `smoke_photo`(69) / `smoke_ocr`(66) / `smoke_vault`(29)
+`smoke_shift`(167) / `smoke_shift_import`(15) / `smoke_shift_month`(42) / `smoke_security`(57) /
+`smoke_photo`(69) / `smoke_ocr`(66) / `smoke_vault`(29) / `smoke_monthview`(42) /
+`smoke_yearview`(47) / `smoke_violation`(52)
 
 ### 骨架（`assets/skeleton`，19 项）
 

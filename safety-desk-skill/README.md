@@ -72,7 +72,7 @@ node tests/serve.js 8132 my-desk
 
 ```bash
 cd tests && npm install && cd ..
-bash scripts/run_all_tests.sh          # 两套示例全量：2052 项
+bash scripts/run_all_tests.sh          # 两套示例全量：2528 项
 node scripts/print_probe.js http://127.0.0.1:8124/index.html   # 真打印几页
 ```
 
@@ -103,8 +103,8 @@ safety-desk-skill/
 │       ├── index.html
 │       └── assets/{css/app.css, js/{config,utils,store,auth,router,app}.js}
 ├── examples/
-│   ├── safety-desk/            ★ 完整示例：9 模块 / 49 JS / 1355 项自检
-│   ├── safety-desk-blank/      同一套代码的「空白版」（无示例数据，697 项自检）
+│   ├── safety-desk/            ★ 完整示例：10 模块 / 52 JS / 1621 项自检
+│   ├── safety-desk-blank/      同一套代码的「空白版」（无示例数据，907 项自检）
 │   └── README.md
 ├── tests/                      jsdom 自检套件 + 静态服务（npm install 后使用）
 └── scripts/
@@ -124,7 +124,7 @@ safety-desk-skill/
 | 首屏 | 预置示例数据（隐患/巡检/培训/台账…） | 全空，从「登记第一条」开始 |
 | 数据源 | 模拟数据，可切「真实接口」 | 固定本机存储 |
 | 适合 | 给客户/同事看效果 | 真正拿去用 |
-| 自检 | 1355 项 | 697 项 |
+| 自检 | 1621 项 | 907 项 |
 
 两套共用同一个架构，改逻辑时两边同步，自检也必须两边都跑。
 

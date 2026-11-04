@@ -35,6 +35,26 @@ SD.views.training = (function () {
     return c;
   }
 
+  /* ★ 2026-11-04：培训列表默认只看**当年**（年份下拉可切年 / 回到今年），归年按开始日期；
+     缺开始日期的老数据回退结束日期，再没有归入当年。年份只是视图过滤，
+     但指标卡与 chip 计数都跟着所选年份走 —— 否则「未开始 5 条」点进去只有 3 条。 */
+  var YEAR_FIELDS = ['startDate', 'endDate'];
+
+  function curYear(s) {
+    return SD.comp.yearBar.yearOf(s && s.today) || String(new Date().getFullYear());
+  }
+
+  function inYear(t, y, cur) {
+    return SD.comp.yearBar.yearOfRecord(t, YEAR_FIELDS, cur) === y;
+  }
+
+  /** 按状态统计一批培训（与 count(s) 同口径，只是范围限定在某年） */
+  function countList(list) {
+    var c = { planned: 0, ongoing: 0, done: 0 };
+    (list || []).forEach(function (t) { if (c[t.status] != null) c[t.status]++; });
+    return c;
+  }
+
   /* ---------------- 字段定义（新增 / 编辑共用） ----------------
      与 data/schema.md 的 training 一节一一对应。 */
   var TRAIN_FIELDS = [
@@ -110,21 +130,25 @@ SD.views.training = (function () {
     var f = (ctx.state.filters.training = ctx.state.filters.training || {});
     if (!f.status) f.status = 'all';
     if (f.q == null) f.q = '';
+    /* 年份：首次进入 / 刷新页面 / 脏值 一律回「当年」（不落本地存储） */
+    var CY = curYear(s);
+    if (!SD.comp.yearBar.yearOf(f.year)) f.year = CY;
+    var yearList = s.trainings.filter(function (t) { return inYear(t, f.year, CY); });
     var sort = (ctx.state.sort.training = ctx.state.sort.training || { key: 'startDate', dir: 'asc' });
 
     U.clear(host);
 
-    /* ---------- 培训指标 ---------- */
-    var c = count(s);
+    /* ---------- 培训指标（范围 = 当前所选年份） ---------- */
+    var c = countList(yearList);
     var attended = 0, should = 0;
-    s.trainings.forEach(function (t) { attended += (t.actual || 0); should += (t.required || 0); });
+    yearList.forEach(function (t) { attended += (t.actual || 0); should += (t.required || 0); });
     var rate = should ? Math.round((attended / should) * 100) : 0;
 
     var box = U.h('<div class="grid cols-4"></div>');
     SD.comp.statCard.renderAll(box, [
       {
-        label: '培训计划', value: s.trainings.length, unit: '条', icon: 'book', tone: 'blue',
-        foot: '覆盖三级教育 / 专项 / 应急演练', hint: '全部计划',
+        label: '培训计划', value: yearList.length, unit: '条', icon: 'book', tone: 'blue',
+        foot: '覆盖三级教育 / 专项 / 应急演练', hint: f.year + ' 年的全部计划',
         onClick: function () { f.status = 'all'; ctx.refresh(); }
       },
       {
@@ -150,7 +174,7 @@ SD.views.training = (function () {
     var bar = U.h('<div class="filters"><div class="chip-group"></div><div class="spacer"></div></div>');
     var cg = bar.querySelector('.chip-group');
     CHIPS.forEach(function (k) {
-      var n = k.v === 'all' ? s.trainings.length : (c[k.v] || 0);
+      var n = k.v === 'all' ? yearList.length : (c[k.v] || 0);
       var chip = U.h('<button class="chip' + (f.status === k.v ? ' on' : '') + '">' + U.esc(k.n) + ' ' + n + '</button>');
       chip.addEventListener('click', function () {
         f.status = k.v;
@@ -159,6 +183,16 @@ SD.views.training = (function () {
       });
       cg.appendChild(chip);
     });
+
+    /* 年份（默认当年）：切年只影响本页列表与上面四张指标卡，不动数据 */
+    bar.insertBefore(SD.comp.yearBar.build({
+      value: f.year, cur: CY,
+      years: SD.comp.yearBar.yearsOf(s.trainings, YEAR_FIELDS, CY),
+      count: yearList.length, total: s.trainings.length,
+      tip: '按开始日期归年；缺开始日期的老记录按结束日期归年',
+      onChange: function (y) { f.year = y; ctx.refresh(); }
+    }), bar.querySelector('.spacer'));
+
     var spacer = bar.querySelector('.spacer');
     // 搜索（名称 / 编号 / 对象 / 讲师 / 类型）
     var q = U.h('<input class="input" placeholder="搜名称 / 编号 / 对象 / 讲师" style="width:200px" data-keep-focus="training">');
@@ -186,7 +220,7 @@ SD.views.training = (function () {
 
     function redraw() {
     U.clear(body);
-    var list = s.trainings.filter(function (x) { return f.status === 'all' || x.status === f.status; });
+    var list = yearList.filter(function (x) { return f.status === 'all' || x.status === f.status; });
     if (f.q) {
       var kw = String(f.q).toLowerCase();
       list = list.filter(function (x) {
@@ -205,13 +239,28 @@ SD.views.training = (function () {
     subEl.textContent = list.length + ' 条' + (f.status === 'all' ? '' : '（已筛选）');
 
     if (!list.length) {
-      body.appendChild(SD.comp.state.build('empty', {
-        title: s.trainings.length ? '这一类没有培训计划' : '暂无培训计划',
-        desc: s.trainings.length
-          ? (f.q ? '没有匹配「' + f.q + '」的培训，换个关键词或清空搜索。' : '换个筛选条件看看。')
-          : '新增第一条培训计划后，这里会显示类型、对象与应到/实到完成情况。',
-        action: s.trainings.length ? null : { text: '新增培训计划', onClick: function () { openTrainForm(ctx, null); } }
-      }));
+      if (!s.trainings.length) {
+        body.appendChild(SD.comp.state.build('empty', {
+          title: '暂无培训计划',
+          desc: '新增第一条培训计划后，这里会显示类型、对象与应到/实到完成情况。',
+          action: { text: '新增培训计划', onClick: function () { openTrainForm(ctx, null); } }
+        }));
+      } else if (!yearList.length) {
+        body.appendChild(SD.comp.state.build('empty', {
+          title: f.year + ' 年还没有培训计划',
+          desc: '这个年份没有排过培训。用年份下拉切到其它年份，或直接回到今年。',
+          action: f.year === CY ? null : {
+            text: '回到今年', icon: 'calendar',
+            onClick: function () { f.year = CY; ctx.refresh(); }
+          }
+        }));
+      } else {
+        body.appendChild(SD.comp.state.build('empty', {
+          title: '这一类没有培训计划',
+          desc: f.q ? '没有匹配「' + f.q + '」的培训，换个关键词或清空搜索。' : '换个筛选条件看看。',
+          action: null
+        }));
+      }
     } else {
       body.appendChild(SD.comp.table.build({
         columns: [

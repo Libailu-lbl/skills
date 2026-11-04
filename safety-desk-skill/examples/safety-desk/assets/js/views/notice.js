@@ -48,8 +48,23 @@ SD.views.notice = (function () {
     { v: 'code',      n: '按编号' }
   ];
 
+  /* ★ 2026-11-04：列表默认只看**当年**（年份下拉可切年 / 回到今年），归年按发布日期。
+     年份只是视图过滤：不写库、不改数据，导航摘要（sub）仍是全量口径。 */
+  var YEAR_FIELDS = ['publishAt'];
+
+  function curYear(s) {
+    return SD.comp.yearBar.yearOf(s && s.today) || String(new Date().getFullYear());
+  }
+
+  function inYear(n, y, cur) {
+    return SD.comp.yearBar.yearOfRecord(n, YEAR_FIELDS, cur) === y;
+  }
+
   function applyFilter(s, f, sort) {
     var list = s.notices.slice();
+    var cy = curYear(s);
+    var y = SD.comp.yearBar.yearOf(f.year) || cy;
+    list = list.filter(function (n) { return inYear(n, y, cy); });
     if (f.q) {
       var q = String(f.q).toLowerCase();
       list = list.filter(function (n) {
@@ -113,19 +128,34 @@ SD.views.notice = (function () {
 
     var f = (ctx.state.filters.notice = ctx.state.filters.notice || {});
     if (f.q == null) f.q = '';
+    /* 年份：首次进入 / 刷新页面 / 脏值 一律回「当年」（不落本地存储） */
+    var CY = curYear(s);
+    if (!SD.comp.yearBar.yearOf(f.year)) f.year = CY;
     var sort = (ctx.state.sort.notice = ctx.state.sort.notice || { key: 'smart', dir: 'desc' });
 
     /* ---------- 通知公告 ---------- */
     var card = U.h(
       '<section class="card"><div class="card-head">' +
-      '<div><h3>通知公告</h3><div class="sub">置顶优先，其余按发布时间倒序</div></div>' +
+      '<div><h3>通知公告</h3><div class="sub js-nt-sub">置顶优先，其余按发布时间倒序</div></div>' +
       '<div class="js-head"></div></div>' +
       '<div class="notice-list js-list"></div></section>'
     );
     var listBox = card.querySelector('.js-list');
 
-    /* 头部工具：搜索 + 排序 + 发布 */
+    /* 头部工具：年份 + 搜索 + 排序 + 发布 */
     var head = card.querySelector('.js-head');
+    var subEl = card.querySelector('.js-nt-sub');
+    var yearRows = s.notices.filter(function (n) { return inYear(n, f.year, CY); });
+
+    /* 年份（默认当年）：切年只影响这份列表，不动数据 */
+    head.appendChild(SD.comp.yearBar.build({
+      value: f.year, cur: CY,
+      years: SD.comp.yearBar.yearsOf(s.notices, YEAR_FIELDS, CY),
+      count: yearRows.length, total: s.notices.length,
+      tip: '按发布日期归年',
+      onChange: function (y) { f.year = y; ctx.refresh(); }
+    }));
+
     var q = U.h('<input class="input" placeholder="搜标题 / 摘要 / 单位" style="width:190px" data-keep-focus="notice">');
     q.value = f.q || '';
     q.addEventListener('input', U.debounce(function () { f.q = q.value; redraw(); }, 250));
@@ -151,14 +181,35 @@ SD.views.notice = (function () {
     U.clear(listBox);
     var list = applyFilter(s, f, sort);
 
+    if (subEl) {
+      subEl.textContent = f.year + ' 年 共 ' + list.length + ' 条' +
+        (s.notices.length !== yearRows.length ? ' · 全部 ' + s.notices.length + ' 条' : '') +
+        '；置顶优先，其余按发布时间倒序';
+    }
+
     if (!list.length) {
-      listBox.appendChild(SD.comp.state.build('empty', {
-        title: s.notices.length ? '没有匹配的通知' : '暂无通知公告',
-        desc: s.notices.length
-          ? '没有匹配「' + f.q + '」的通知，换个关键词或清空搜索。'
-          : '点右上角「发布通知」录入第一条；已录入的通知按置顶优先、其余按发布时间倒序展示。',
-        action: s.notices.length ? null : { text: '发布通知', onClick: function () { openForm(ctx, null); } }
-      }));
+      if (!s.notices.length) {
+        listBox.appendChild(SD.comp.state.build('empty', {
+          title: '暂无通知公告',
+          desc: '点右上角「发布通知」录入第一条；已录入的通知按置顶优先、其余按发布时间倒序展示。',
+          action: { text: '发布通知', onClick: function () { openForm(ctx, null); } }
+        }));
+      } else if (!yearRows.length) {
+        listBox.appendChild(SD.comp.state.build('empty', {
+          title: f.year + ' 年还没有通知公告',
+          desc: '这个年份没有发布过通知。用年份下拉切到其它年份，或直接回到今年。',
+          action: f.year === CY ? null : {
+            text: '回到今年', icon: 'calendar',
+            onClick: function () { f.year = CY; ctx.refresh(); }
+          }
+        }));
+      } else {
+        listBox.appendChild(SD.comp.state.build('empty', {
+          title: '没有匹配的通知',
+          desc: '没有匹配「' + f.q + '」的通知，换个关键词或清空搜索。',
+          action: null
+        }));
+      }
     } else {
       list.forEach(function (n) {
         listBox.appendChild(SD.comp.listItem.notice(n, {

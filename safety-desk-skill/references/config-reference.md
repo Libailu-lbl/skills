@@ -49,7 +49,8 @@ codeRules: {
   inspection:  { prefix:'FZXJ', label:'巡检编号', withYear:true,  seqLen:3 },  // FZXJ-2026-001
   certificate: { prefix:'ZGZS', label:'证书编号', withYear:false, seqLen:3 },  // ZGZS-001
   permit:      { prefix:'FZ', prefixFrom:'type', label:'作业票编号',
-                 withYear:false, seqLen:7 }                                    // FZDZ-0000001（吊装）
+                 withYear:false, seqLen:7 },                                   // FZDZ-0000001（吊装）
+  violation:   { prefix:'FZKH', label:'考核单编号', withYear:false, seqLen:3 }  // FZKH-001
 }
 ```
 

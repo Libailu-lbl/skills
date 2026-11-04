@@ -119,7 +119,13 @@ function ok(name, cond, extra) {
   win.location.hash = '#/specPermit';
   await wait(300);
   view = doc.getElementById('view');
-  ok('作业票表格行 = 8', view.querySelectorAll('table tbody tr').length === 8, view.querySelectorAll('table tbody tr').length);
+  /* ★ 2026-10-30 起作业票按月展示：默认只列当月，行数按 planStart 归月后比对 */
+  const curM = SD.utils.today().slice(0, 7);
+  const inMonth = SD.store.data().workPermits.filter(p => String(p.planStart || p.planEnd || curM).slice(0, 7) === curM).length;
+  const rows = view.querySelectorAll('table tbody tr').length;
+  ok('作业票默认只列当月（' + curM + '）', rows === inMonth && rows > 0, rows + ' 行 / 当月 ' + inMonth + ' 张');
+  ok('月份选择器默认当月', (view.querySelector('.js-m-input') || {}).value === curM,
+    (view.querySelector('.js-m-input') || {}).value);
   const pending = SD.store.data().workPermits.filter(x => x.status === 'pending')[0];
   ok('存在待审批作业票', !!pending, pending && pending.code);
   await SD.api.updateWorkPermit(pending.id, { status: 'approved', approvedBy: '王安全', approvedAt: s.today + ' 08:30' });

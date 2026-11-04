@@ -322,6 +322,18 @@ SD.comp.xlsxWriter = (function () {
         merges.map(function (m) { return '<mergeCell ref="' + m + '"/>'; }).join('') + '</mergeCells>';
     }
 
+    /* 行分页符（★ 2026-11-03）：sheet.rowBreaks = [N1, N2, ...] 表示在第 N 行**前**插入分页符。
+       一个 sheet 里放两张表（白班+夜班）时，在第二张表首行前插分页符，
+       打印即第 1 页白班、第 2 页夜班，配合双面打印正好正反面。 */
+    var rowBreaksXml = '';
+    if (sheet.rowBreaks && sheet.rowBreaks.length) {
+      var brks = sheet.rowBreaks.map(function (n) {
+        return '<brk id="' + n + '" max="' + 16383 + '" man="1"/>';
+      }).join('');
+      rowBreaksXml = '<rowBreaks count="' + sheet.rowBreaks.length +
+        '" manualBreakCount="' + sheet.rowBreaks.length + '">' + brks + '</rowBreaks>';
+    }
+
     /* 页面设置（可选）：orientation / paperSize / fitToWidth / fitToHeight / margins
        margins 用英寸；不传时用「常规」（Excel「普通」预设：左右 0.7、上下 0.75、页眉页脚 0.3） */
     var pg = sheet.page || null;
@@ -358,7 +370,11 @@ SD.comp.xlsxWriter = (function () {
       colsXml +
       '<sheetData>' + rowsXml.join('') + '</sheetData>' +
       mergeXml +
+      /* ★ CT_Worksheet 子元素顺序是 schema 强制的：pageMargins/pageSetup/headerFooter
+         必须在 rowBreaks/colBreaks 之前。之前把 rowBreaks 放在 mergeCells 之后、
+         pageMargins 之前，Excel 严格校验会报「文件损坏」。 */
       pageXml +
+      rowBreaksXml +
       (withDrawing ? '<drawing r:id="rId1"/>' : '') +
       '</worksheet>';
   }
@@ -384,25 +400,32 @@ SD.comp.xlsxWriter = (function () {
     return new Uint8Array(out);
   }
 
-  function drawingXml(img) {
-    var w = img.w || 165, h = img.h || 30;
-    var cx = Math.round(w * 9525), cy = Math.round(h * 9525);
-    var col = img.col || 0, row = img.row || 0;
-    var colOff = img.colOff == null ? 6350 : img.colOff;
-    var rowOff = img.rowOff == null ? 85725 : img.rowOff;
+  function drawingXml(images) {
+    /* 支持一张图（老写法）或一个 sheet 里多张图（images 数组）。
+       多张时同一 drawing 里放多个 oneCellAnchor，rId 依次 rId1、rId2… */
+    var list = (Array.isArray(images) ? images : [images]).filter(function (x) { return x; });
+    var anchors = list.map(function (img, idx) {
+      var w = img.w || 165, h = img.h || 30;
+      var cx = Math.round(w * 9525), cy = Math.round(h * 9525);
+      var col = img.col || 0, row = img.row || 0;
+      var colOff = img.colOff == null ? 6350 : img.colOff;
+      var rowOff = img.rowOff == null ? 85725 : img.rowOff;
+      var rid = 'rId' + (idx + 1);
+      return '<xdr:oneCellAnchor>' +
+        '<xdr:from><xdr:col>' + col + '</xdr:col><xdr:colOff>' + colOff + '</xdr:colOff>' +
+        '<xdr:row>' + row + '</xdr:row><xdr:rowOff>' + rowOff + '</xdr:rowOff></xdr:from>' +
+        '<xdr:ext cx="' + cx + '" cy="' + cy + '"/>' +
+        '<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="' + (idx + 2) + '" name="logo' + (idx + 1) + '"/><xdr:cNvPicPr/><xdr:nvPr/></xdr:nvPicPr>' +
+        '<xdr:blipFill><a:blip r:embed="' + rid + '"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>' +
+        '<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm>' +
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>' +
+        '<xdr:clientData/></xdr:oneCellAnchor>';
+    }).join('');
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
       '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" ' +
       'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
       'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-      '<xdr:oneCellAnchor>' +
-      '<xdr:from><xdr:col>' + col + '</xdr:col><xdr:colOff>' + colOff + '</xdr:colOff>' +
-      '<xdr:row>' + row + '</xdr:row><xdr:rowOff>' + rowOff + '</xdr:rowOff></xdr:from>' +
-      '<xdr:ext cx="' + cx + '" cy="' + cy + '"/>' +
-      '<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="2" name="logo"/><xdr:cNvPicPr/><xdr:nvPr/></xdr:nvPicPr>' +
-      '<xdr:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>' +
-      '<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm>' +
-      '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>' +
-      '<xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>';
+      anchors + '</xdr:wsDr>';
   }
 
   function sheetNameSafe(name, i) {
@@ -483,7 +506,12 @@ SD.comp.xlsxWriter = (function () {
   function build(sheets, opts) {
     opts = opts || {};
     sheets = (sheets || []).map(function (s, i) {
-      return { name: sheetNameSafe(s.name, i), cols: s.cols || [], rows: s.rows || [], page: s.page, image: s.image };
+      /* image 兼容单张对象或数组；统一成 images 数组（至少一张才算有图） */
+      var images = (s.images && s.images.length)
+        ? s.images
+        : (s.image && s.image.data ? [s.image] : []);
+      return { name: sheetNameSafe(s.name, i), cols: s.cols || [], rows: s.rows || [],
+               page: s.page, images: images, rowBreaks: s.rowBreaks };
     });
     var se = new StyleEngine();
 
@@ -492,12 +520,12 @@ SD.comp.xlsxWriter = (function () {
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
       '<Default Extension="xml" ContentType="application/xml"/>' +
-      (sheets.some(function (s) { return s.image && s.image.data; }) ? '<Default Extension="png" ContentType="image/png"/>' : '') +
+      (sheets.some(function (s) { return s.images.length; }) ? '<Default Extension="png" ContentType="image/png"/>' : '') +
       '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
       '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
       sheets.map(function (s, i) {
         var s1 = '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
-        if (s.image && s.image.data) {
+        if (s.images.length) {
           s1 += '<Override PartName="/xl/drawings/drawing' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>';
         }
         return s1;
@@ -529,7 +557,7 @@ SD.comp.xlsxWriter = (function () {
       '</Relationships>';
 
     // 先渲染所有工作表，把用到的样式收集进 se（样式必须早于 styles.xml 生成）
-    var sheetXmls = sheets.map(function (s) { return sheetXml(s, se, !!(s.image && s.image.data)); });
+    var sheetXmls = sheets.map(function (s) { return sheetXml(s, se, s.images.length > 0); });
     var styles = se.stylesXml();
 
     var files = [
@@ -542,25 +570,34 @@ SD.comp.xlsxWriter = (function () {
     sheetXmls.forEach(function (xml, i) {
       files.push({ name: 'xl/worksheets/sheet' + (i + 1) + '.xml', data: utf8(xml) });
     });
-    /* 图片部件：media + drawing + 两级 rels（工作表 → drawing → 图片） */
-    sheets.forEach(function (s, i) {
-      if (!s.image || !s.image.data) return;
-      var n = i + 1;
-      files.push({ name: 'xl/media/image' + n + '.png', data: b64ToBytes(s.image.data) });
-      files.push({ name: 'xl/drawings/drawing' + n + '.xml', data: utf8(drawingXml(s.image)) });
+    /* 图片部件：media + drawing + 两级 rels（工作表 → drawing → 图片）。
+       media 命名：单张图用 `image{sheet}.png`（老命名，向后兼容），
+       一个 sheet 多张图时用 `image{sheet}_{k}.png`。 */
+    sheets.forEach(function (s, si) {
+      if (!s.images.length) return;
+      var dn = si + 1;
+      var multi = s.images.length > 1;
+      var rels = [];
+      s.images.forEach(function (img, k) {
+        var mn = multi ? (dn + '_' + (k + 1)) : String(dn);
+        files.push({ name: 'xl/media/image' + mn + '.png', data: b64ToBytes(img.data) });
+        rels.push('<Relationship Id="rId' + (k + 1) +
+          '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" ' +
+          'Target="../media/image' + mn + '.png"/>');
+      });
+      files.push({ name: 'xl/drawings/drawing' + dn + '.xml', data: utf8(drawingXml(s.images)) });
       files.push({
-        name: 'xl/drawings/_rels/drawing' + n + '.xml.rels',
+        name: 'xl/drawings/_rels/drawing' + dn + '.xml.rels',
         data: utf8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
           '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-          '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" ' +
-          'Target="../media/image' + n + '.png"/></Relationships>')
+          rels.join('') + '</Relationships>')
       });
       files.push({
-        name: 'xl/worksheets/_rels/sheet' + n + '.xml.rels',
+        name: 'xl/worksheets/_rels/sheet' + dn + '.xml.rels',
         data: utf8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
           '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
           '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" ' +
-          'Target="../drawings/drawing' + n + '.xml"/></Relationships>')
+          'Target="../drawings/drawing' + dn + '.xml"/></Relationships>')
       });
     });
 
