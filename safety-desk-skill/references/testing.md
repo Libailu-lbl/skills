@@ -19,13 +19,13 @@
 
 ```bash
 cd tests && npm install && cd ..        # 一次性
-bash scripts/run_all_tests.sh           # 两套示例全量（1755 项）
+bash scripts/run_all_tests.sh           # 全部自检（907 项 / 14 套）
 ```
 
 单跑一个：
 
 ```bash
-node tests/serve.js 8126 examples/safety-desk          # 终端 A
+node tests/serve.js 8126 examples/safety-desk-blank          # 终端 A
 node tests/smoke_shift.js http://127.0.0.1:8126/index.html   # 终端 B
 ```
 
@@ -149,7 +149,7 @@ assert '现场安全巡检与交接班记录' in t and '检查情况正常打' i
 
 ---
 
-## 七、测试覆盖什么（示例项目 1755 项）
+## 七、测试覆盖什么（示例项目 907 项 / 14 套）
 
 | 类别 | 例子 |
 |---|---|

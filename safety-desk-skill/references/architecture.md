@@ -196,4 +196,4 @@ function crud(key, path, opt) {
 ```
 
 `http()` 里用 `CONFIG.baseURL` + `CONFIG.getToken()`。视图层、指标层、出件层**一行都不用改**。
-字段契约见 `examples/safety-desk/data/schema.md`。
+字段契约见 `examples/safety-desk-blank/data/schema.md`。

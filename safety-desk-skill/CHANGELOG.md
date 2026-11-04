@@ -2,6 +2,33 @@
 
 本项目按「工作台版本」记录；日期为实际开发日期。
 
+## v1.2.1 — 移除示例数据版，只保留可运行示例
+
+**主题**：`examples/safety-desk`（带示例数据、用于演示的版本）与 `examples/safety-desk-blank`
+代码完全相同、只差初始数据，两份并行维护每次都要同步两遍、各跑一遍自检，容易不同步。现合并为一份。
+
+### 移除
+- `examples/safety-desk/`（61 个文件）整体删除，只保留 `examples/safety-desk-blank/`
+- 随之删除只跑示例数据版的 11 套自检：
+  `smoke` / `smoke_code` / `smoke_crud` / `smoke_ops` / `smoke_photos` / `smoke_print` /
+  `smoke_reports` / `smoke_settings` / `smoke_special` / `smoke_training` / `smoke_trend`
+- `scripts/run_all_tests.sh` 改为只起一个服务、只跑空白版那 14 套
+- `scripts/gen_pinyin_js.py` 目标改为只写空白版
+
+### 变更
+- 文档全面改为单示例口径：README / SKILL / examples/README / tests/README / references /
+  docs 里的 `examples/safety-desk` 路径统一指向 `examples/safety-desk-blank`；
+  自检数统一为 **907 项（14 套）**，tests/README 的套件表按空白版重排
+- CHANGELOG v1.2.0 及更早条目里的历史数字**保持原样**（记录的是当时的事实）
+
+### 影响
+- 想「看效果」不再有内置示例数据：跑起来录几条，或导入自己的台账 Excel
+- 覆盖损失：原先只由示例数据版覆盖的 11 套 / 795 项不再运行。其中相当一部分能力
+  已被空白版套件接住（编号、台账导入导出、交接班、照片、权限、月/年视图、违章考核单）
+
+### 自检
+- 空白版 **907 项**（14 套）、骨架 **19 项**，全绿
+
 ## v1.2.0 — 新模块「安全违章考核单」+ 台账按年/按月查看
 
 **主题**：台账跑久了列表会越滚越长，这一年/这一个月的事被往年淹掉；同时补上现场违章的登记入口。

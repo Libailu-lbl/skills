@@ -7,7 +7,7 @@
 <img alt="no build" src="https://img.shields.io/badge/build-none-brightgreen">
 <img alt="no deps" src="https://img.shields.io/badge/runtime%20deps-0-blue">
 <img alt="offline" src="https://img.shields.io/badge/offline-yes-success">
-<img alt="tests" src="https://img.shields.io/badge/selftests-1755%20passed-brightgreen">
+<img alt="tests" src="https://img.shields.io/badge/selftests-907%20passed-brightgreen">
 </p>
 
 ---
@@ -22,7 +22,7 @@
 |---|---|---|
 | **方法论** | [`SKILL.md`](SKILL.md) + [`references/`](references) | 想照着做的 AI / 开发者 |
 | **最小骨架** | [`assets/skeleton/`](assets/skeleton) | 想 5 分钟起一个新工作台 |
-| **完整示例** | [`examples/safety-desk/`](examples/safety-desk) | 想看 9 个模块怎么组织、出件怎么对表 |
+| **可运行示例** | [`examples/safety-desk-blank/`](examples/safety-desk-blank) | 想看 10 个模块怎么组织、出件怎么对表，或直接拿去用 |
 
 ---
 
@@ -54,8 +54,8 @@
 ```bash
 git clone https://github.com/Libailu-lbl/skills.git
 cd skills/safety-desk-skill
-# 直接双击 examples/safety-desk/index.html 也行
-node tests/serve.js 8124 examples/safety-desk
+# 直接双击 examples/safety-desk-blank/index.html 也行
+node tests/serve.js 8124 examples/safety-desk-blank
 # 浏览器打开 http://127.0.0.1:8124/index.html
 ```
 
@@ -72,7 +72,7 @@ node tests/serve.js 8132 my-desk
 
 ```bash
 cd tests && npm install && cd ..
-bash scripts/run_all_tests.sh          # 两套示例全量：2528 项
+bash scripts/run_all_tests.sh          # 全部自检：907 项（14 套）
 node scripts/print_probe.js http://127.0.0.1:8124/index.html   # 真打印几页
 ```
 
@@ -103,12 +103,11 @@ safety-desk-skill/
 │       ├── index.html
 │       └── assets/{css/app.css, js/{config,utils,store,auth,router,app}.js}
 ├── examples/
-│   ├── safety-desk/            ★ 完整示例：10 模块 / 52 JS / 1621 项自检
-│   ├── safety-desk-blank/      同一套代码的「空白版」（无示例数据，907 项自检）
+│   ├── safety-desk-blank/      ★ 可运行示例：10 模块 / 52 JS / 907 项自检（无示例数据）
 │   └── README.md
 ├── tests/                      jsdom 自检套件 + 静态服务（npm install 后使用）
 └── scripts/
-    ├── run_all_tests.sh        一条命令跑完两套
+    ├── run_all_tests.sh        一条命令跑完全部自检
     ├── print_probe.js          Chrome headless 真打印 → 数页数
     ├── compare_xlsx.py         导出件与原表逐格 diff
     ├── gen_pinyin_js.py        重新生成拼音首字母表（改编号前缀规则时才用）
@@ -117,22 +116,28 @@ safety-desk-skill/
 
 ---
 
-## 两套示例，什么区别
+## 示例工程
 
-| | `examples/safety-desk` | `examples/safety-desk-blank` |
-|---|---|---|
-| 首屏 | 预置示例数据（隐患/巡检/培训/台账…） | 全空，从「登记第一条」开始 |
-| 数据源 | 模拟数据，可切「真实接口」 | 固定本机存储 |
-| 适合 | 给客户/同事看效果 | 真正拿去用 |
-| 自检 | 1621 项 | 907 项 |
+`examples/safety-desk-blank` 是一套**可直接跑、也可直接拿去用**的完整工作台：
+10 个模块、52 个 JS，首屏是空的（从「登记第一条隐患」开始），不带业务数据 ——
+数据自己录，或从 Excel 批量导入。
 
-两套共用同一个架构，改逻辑时两边同步，自检也必须两边都跑。
+```bash
+node tests/serve.js 8124 examples/safety-desk-blank
+# 浏览器打开 http://127.0.0.1:8124/index.html（初始为受限模式，密码见快速开始）
+```
+
+自检：`bash scripts/run_all_tests.sh` → **907 项**（14 套）全绿。
+
+> **2026-11-05 起仓库只保留这一套**：原 `examples/safety-desk`（带示例数据、用于演示效果的版本）
+> 已移除 —— 它与本套代码完全相同、只差初始数据，两份并行维护极易不同步（每次改逻辑都要同步两遍、
+> 两套各跑一遍自检）。要看效果，跑起来后录几条，或导入自己的台账 Excel 即可。
 
 ---
 
 ## 自检覆盖了什么
 
-1755 项断言，重点不在「页面渲染出来了」，而在**口径和出件**：
+**907 项断言**（14 套），重点不在「页面渲染出来了」，而在**口径和出件**：
 
 - 数量与合计（列表条数 = 状态合计 = 台账总数）
 - 状态机流转（草稿 → 待审批 → 已批准 → 作业中 → 已完工，非法流转被拒）

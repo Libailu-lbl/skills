@@ -477,10 +477,10 @@ Excel / WPS 直接打开。
 **改号不影响这些**；但以**文本**形式引用了旧编号的地方（巡检备注、已下载的通知书文件与标题、纸质归档件）
 不会自动同步，需人工核对；导入旧备份（含空号 / 重号记录）会被拒，需先在文件里补好编号再导入。
 
-回归：`node safety-desk_dev/smoke_code.js`（示例数据版 8124）、`node safety-desk_dev/smoke_permitcode.js`、
-`node safety-desk_dev/smoke_monthview.js`（作业票月视图 + 巡检照片 18 张）
-（作业票动态前缀，两个版本都跑；空白版无预置数据，脚本会先按新规则铺 8 张票）与空白版全量冒烟
-`node safety-desk_dev/smoke_blank.js`（8125）—— 规则表 / 表单预填 next 值（可手改）/ 无「默认」按钮 /
+回归：`node safety-desk_dev/smoke_permitcode.js`、`node safety-desk_dev/smoke_monthview.js`
+（作业票月视图 + 巡检照片 18 张）
+（作业票动态前缀；空白版无预置数据，脚本会先按新规则铺 8 张票）与全量冒烟
+`node safety-desk_dev/smoke_blank.js` —— 规则表 / 表单预填 next 值（可手改）/ 无「默认」按钮 /
 手改落库 / 空·格式·重复三类拦截 / 编辑自身不误报 / 跨类型互不干扰 / 历史格式兼容 /
 数据层兜底 / 导入校验 / **待办四类口径（巡检 / 作业票 / 培训 chips）** /
 **搜索 / 筛选 / 排序只重绘列表（输入框 DOM 不重建，连续打字与中文输入法都不被打断）+ 导航分组（常用含特种作业 / 更多含看板·通知·报表小分组）**。

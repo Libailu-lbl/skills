@@ -1,6 +1,6 @@
 # 配置参考
 
-> 所有可调项的默认值都在 `assets/js/config.js`（骨架）或 `examples/safety-desk/assets/js/config.js`（完整版）。
+> 所有可调项的默认值都在 `assets/js/config.js`（骨架）或 `examples/safety-desk-blank/assets/js/config.js`（完整版）。
 
 ---
 
@@ -80,7 +80,7 @@ codeRules: {
   （点名应填哪个），旧号与改名后的旧前缀放行
 - 想改回固定前缀：删掉 `prefixFrom`、把 `prefix` 写成完整前缀（如 `'FZZY'`）即可
 
-详见 `examples/safety-desk/data/schema.md` 的「危险作业票：前缀按作业类型动态生成」。
+详见 `examples/safety-desk-blank/data/schema.md` 的「危险作业票：前缀按作业类型动态生成」。
 
 ---
 

@@ -20,7 +20,7 @@ node tests/serve.js 8124 examples/safety-desk
 # 打开 http://127.0.0.1:8124/index.html
 ```
 
-也可以直接双击 `examples/safety-desk/index.html`（`file://` 也能跑）。
+也可以直接双击 `examples/safety-desk-blank/index.html`（`file://` 也能跑）。
 
 看点：
 1. 左侧导航分「常用」和「更多」（更多里还有「报表」小分组）
@@ -148,8 +148,8 @@ if (SD.router.current() === 'check') {
 |---|---|
 | 换配色 | `assets/css/app.css` 顶部 `:root` 变量 |
 | 换名称/副标题 | 页面里点左上角，或 `config.js` 的 `appName/appSub` |
-| 加筛选/搜索 | 抄 `examples/safety-desk/assets/js/components/table.js` 的用法 |
-| 加单据编号 | 抄 `examples/safety-desk/assets/js/code.js`（前缀 + 位数 + 校验 + 顺延） |
+| 加筛选/搜索 | 抄 `examples/safety-desk-blank/assets/js/components/table.js` 的用法 |
+| 加单据编号 | 抄 `examples/safety-desk-blank/assets/js/code.js`（前缀 + 位数 + 校验 + 顺延） |
 | 加打印 | 见 `references/print-and-export.md` |
 | 加 Excel 导出 | `xlsxWriter.build([{name, cols, rows, page}])` → `download(blob, name)` |
 | 加照片 | 抄 `components/photoVault.js`（IndexedDB 外置）+ `photoPicker.js` |

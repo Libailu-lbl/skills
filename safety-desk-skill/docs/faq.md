@@ -80,7 +80,7 @@ body > *:not(.pn-overlay):not(.pp-overlay):not(.sl-overlay) { display: none !imp
 ## 五、开发与自检
 
 **Q：`node smoke_xxx.js` 报 `ECONNREFUSED`？**
-没起静态服务，或服务被上一个终端关掉了。先 `node tests/serve.js 8126 examples/safety-desk`。
+没起静态服务，或服务被上一个终端关掉了。先 `node tests/serve.js 8126 examples/safety-desk-blank`。
 
 **Q：为什么不能用 `python -m http.server`？**
 jsdom 会并发拉 30 来个 `<script>`，Python 简易服务在并发下偶发重置连接，导致自检随机失败。用 `tests/serve.js`（Node http，稳）。

@@ -28,7 +28,6 @@ from pypinyin import Style, pinyin
 ROOT = os.path.dirname(os.path.abspath(__file__))
 # 仓库内布局：scripts/ 的上一级是 skill 根，两个示例在 examples/ 下
 TARGETS = [
-    os.path.join(ROOT, '..', 'examples', 'safety-desk', 'assets', 'js', 'pinyin.js'),
     os.path.join(ROOT, '..', 'examples', 'safety-desk-blank', 'assets', 'js', 'pinyin.js'),
 ]
 

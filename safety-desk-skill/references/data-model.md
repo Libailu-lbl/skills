@@ -142,7 +142,7 @@
 
 危险作业票用**动态前缀**（`prefixFrom:'type'`）：`FZ` + 作业类型名前两字拼音首字母 + 7 位序号
 （吊装作业 `FZDZ-0000001`）。首字母表在 `assets/js/pinyin.js`，序号按前缀各自顺延；
-单字类型只取 1 位、首字母撞车按字典顺序先到先得并延长取字（详见 `examples/safety-desk/data/schema.md`）。
+单字类型只取 1 位、首字母撞车按字典顺序先到先得并延长取字（详见 `examples/safety-desk-blank/data/schema.md`）。
 
 ---
 

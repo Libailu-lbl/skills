@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 # =========================================================
-# run_all_tests.sh — 一键跑完两套工作台的全量冒烟自检
+# run_all_tests.sh — 一键跑完空白工作台的全量冒烟自检
 # ---------------------------------------------------------
 # 用法：
-#   bash scripts/run_all_tests.sh                 # 默认端口 8126/8127
-#   bash scripts/run_all_tests.sh 9126 9127       # 自定义端口（端口被占用时用）
+#   bash scripts/run_all_tests.sh                 # 默认端口 8127
+#   bash scripts/run_all_tests.sh 9127            # 自定义端口（端口被占用时用）
 #
 # 前置：在 tests/ 下执行过 npm install（需要 jsdom 与 fake-indexeddb）
-# 说明：会自己起两个静态服务（tests/serve.js），跑完自动关掉。
+# 说明：会自己起一个静态服务（tests/serve.js），跑完自动关掉。
+#       ★ 2026-11-05 起仓库只保留空白版：示例数据版已从本仓库移除，
+#         原先只跑示例版的套件（smoke / smoke_code / smoke_crud / smoke_ops /
+#         smoke_photos / smoke_print / smoke_reports / smoke_settings /
+#         smoke_special / smoke_training / smoke_trend）一并删除。
 # =========================================================
 set -u
 cd "$(dirname "$0")/.." || exit 1
 ROOT="$(pwd)"
-P_EXAMPLE="${1:-8126}"
-P_BLANK="${2:-8127}"
+P_BLANK="${1:-8127}"
 
 # 依赖：优先用 tests/node_modules；也允许通过 NODE_PATH 指向已有的 node_modules（CI / 复用场景）
 if [ ! -d "tests/node_modules" ] && [ -z "${NODE_PATH:-}" ]; then
@@ -23,12 +26,10 @@ fi
 
 cleanup() {
   [ -n "${PID1:-}" ] && kill "$PID1" 2>/dev/null
-  [ -n "${PID2:-}" ] && kill "$PID2" 2>/dev/null
 }
 trap cleanup EXIT
 
-node tests/serve.js "$P_EXAMPLE" examples/safety-desk     >/dev/null 2>&1 & PID1=$!
-node tests/serve.js "$P_BLANK"   examples/safety-desk-blank >/dev/null 2>&1 & PID2=$!
+node tests/serve.js "$P_BLANK" examples/safety-desk-blank >/dev/null 2>&1 & PID1=$!
 sleep 2
 
 # 三种汇总格式都要认（历史套件写法不统一）：
@@ -60,29 +61,19 @@ run_sets() {
   echo "$bad"
 }
 
-echo "== 示例版（示例数据） http://127.0.0.1:$P_EXAMPLE =="
-OUT1=$(run_sets "http://127.0.0.1:$P_EXAMPLE/index.html" \
-  smoke smoke_code smoke_permitcode smoke_crud smoke_device smoke_excelio smoke_ops \
-  smoke_photo smoke_photos smoke_print smoke_reports smoke_security smoke_settings \
-  smoke_shift smoke_shift_import smoke_shift_month smoke_special smoke_training \
-  smoke_trend smoke_vault smoke_ocr smoke_monthview smoke_yearview smoke_violation)
-echo "$OUT1" | sed '$d'
-BAD1=$(printf '%s' "$OUT1" | tail -1)
-
-echo
 echo "== 空白版（单机空白） http://127.0.0.1:$P_BLANK =="
-OUT2=$(run_sets "http://127.0.0.1:$P_BLANK/index.html" \
+OUT=$(run_sets "http://127.0.0.1:$P_BLANK/index.html" \
   smoke_blank smoke_permitcode smoke_device smoke_excelio smoke_shift smoke_shift_import \
   smoke_shift_month smoke_security smoke_photo smoke_ocr smoke_vault \
   smoke_monthview smoke_yearview smoke_violation)
-echo "$OUT2" | sed '$d'
-BAD2=$(printf '%s' "$OUT2" | tail -1)
+echo "$OUT" | sed '$d'
+BAD=$(printf '%s' "$OUT" | tail -1)
 
 echo
-if [ "${BAD1:-1}" = "0" ] && [ "${BAD2:-1}" = "0" ]; then
+if [ "${BAD:-1}" = "0" ]; then
   echo "全部通过 ✅"
   exit 0
 else
-  echo "有失败项 ❌（示例版 $BAD1 / 空白版 $BAD2）"
+  echo "有失败项 ❌（失败 $BAD）"
   exit 1
 fi

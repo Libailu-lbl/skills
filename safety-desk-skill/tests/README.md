@@ -12,55 +12,43 @@ cd tests && npm install     # jsdom + fake-indexeddb
 ## 一条命令跑完
 
 ```bash
-bash scripts/run_all_tests.sh              # 默认端口 8126 / 8127
-bash scripts/run_all_tests.sh 9126 9127    # 端口被占用时换一组
+bash scripts/run_all_tests.sh              # 默认端口 8127
+bash scripts/run_all_tests.sh 9127         # 端口被占用时换一个
 ```
 
-脚本会自己起两个静态服务、跑完自动关掉。
+脚本会自己起一个静态服务、跑完自动关掉。
 
 ## 单跑
 
 ```bash
-node tests/serve.js 8126 examples/safety-desk                 # 终端 A
-node tests/smoke_shift.js http://127.0.0.1:8126/index.html    # 终端 B
+node tests/serve.js 8124 examples/safety-desk-blank           # 终端 A
+node tests/smoke_shift.js http://127.0.0.1:8124/index.html    # 终端 B
 ```
 
 ## 套件清单
 
-### 示例版（`examples/safety-desk`，共 1621 项）
+### 可运行示例（`examples/safety-desk-blank`，共 907 项 / 14 套）
 
 | 套件 | 项数 | 覆盖 |
 |---|---|---|
-| `smoke.js` | 67 | 页面骨架、导航、持久化、无 JS 报错 |
-| `smoke_code.js` | 106 | 单据编号：八类前缀/年份/位数、示例格式、表单预填、校验 |
-| `smoke_permitcode.js` | 52 | 作业票动态编号：拼音首字母表、八类前缀、各前缀独立顺延、单字/英文/纯符号/撞车兜底、旧号放行、跨类型提示、表单联动 |
-| `smoke_crud.js` | 152 | 隐患 CRUD、状态流转、必填拦截、删除确认 |
-| `smoke_device.js` | 44 | 特种设备人员台账：78 人、日期规范化、搜索筛选排序、编号顺延 |
-| `smoke_ops.js` | 37 | 「操作 ▾」下拉统一（逐板块校验） |
-| `smoke_photo.js` | 69 | 照片水印：两行文案、四档字号、压扁、绘制位置、空值降级 |
-| `smoke_photos.js` | 118 | 照片写入/看大图/作业票打印含证件照/Word 缩放 |
-| `smoke_print.js` | 133 | 整改通知书：版式、边框、分页、独立打印样式 |
-| `smoke_reports.js` | 64 | 日报/周报聚合口径与导出 |
-| `smoke_security.js` | 57 | 清空专用密码、30 分钟空闲锁、签名位 |
-| `smoke_settings.js` | 25 | 工作台名称自定义、侧栏快捷入口 |
+| `smoke_blank.js` | 136 | 空白版首屏：空态、导航、登记第一条、持久化、无 JS 报错 |
+| `smoke_permitcode.js` | 52 | 作业票动态编号：拼音字表、八类前缀、各前缀独立顺延、撞车兜底、跨类型提示 |
+| `smoke_device.js` | 44 | 特种设备人员台账：日期规范化、搜索筛选排序、编号顺延 |
+| `smoke_excelio.js` | 89 | 台账 Excel 导入导出：模板、别名映射、逐行校验、追加/覆盖 |
 | `smoke_shift.js` | 167 | 交接班记录：19 行、打印留空、白夜班同 Excel、按月查看、列宽、角色门禁 |
-| `smoke_shift_import.js` | 15 / 22 | 交接班备注「从每日记录导入」：日期归一、事件拼接、只取当天；传业务表格路径（第 3 个参数）再验真实 11-01 提取 10 条（22 项） |
-| `smoke_shift_month.js` | 42 | 交接班列表按月：默认当月、切月/回到本月、空月空态、保存跨月自动切月 |
-| `smoke_monthview.js` | 45 | 作业票月视图 + 巡检照片上限 18 张 |
-| `smoke_yearview.js` | 99 | 隐患/巡检/培训/通知「默认当年 + 年份下拉 + 时间范围」 |
-| `smoke_violation.js` | 52 | 安全违章考核单：编号 FZKH-001、默认全年、点编号看照片、增改删、受限拦截 |
-| `smoke_special.js` | 34 | 特种作业导航层级、权限门禁、作业票流转（含按月视图） |
-| `smoke_training.js` | 34 | 培训照片与证书 |
-| `smoke_trend.js` | 25 | 各部门趋势：12 个月窗口、兜底口径自洽 |
-| `smoke_vault.js` | 29 | 不压缩 + IndexedDB 外置 + 上传护栏 |
+| `smoke_shift_import.js` | 15 / 22 | 备注「从每日记录导入」：日期归一、事件拼接、只取当天；传业务表格路径再验真实数据（22 项） |
+| `smoke_shift_month.js` | 42 | 交接班按月：默认当月、切月/回到本月、空月空态、保存跨月自动切月 |
+| `smoke_security.js` | 57 | 清空专用密码、30 分钟空闲锁、签名位 |
+| `smoke_photo.js` | 69 | 照片水印：两行文案、四档字号、压扁、绘制位置、空值降级 |
 | `smoke_ocr.js` | 66 | 证件识别解析器 + 接口兜底 + 界面端到端 |
+| `smoke_vault.js` | 29 | 不压缩 + IndexedDB 外置 + 上传护栏 |
+| `smoke_monthview.js` | 42 | 作业票月视图 + 巡查照片上限 18 张 |
+| `smoke_yearview.js` | 47 | 隐患 / 巡检 / 培训 / 通知「默认当年 + 年份下拉」 |
+| `smoke_violation.js` | 52 | 安全违章考核单：编号 FZKH-001、默认全年、点编号看照片、增改删、受限拦截 |
 
-### 空白版（`examples/safety-desk-blank`，共 907 项）
-
-`smoke_blank`(136) / `smoke_permitcode`(52) / `smoke_device`(44) / `smoke_excelio`(89) /
-`smoke_shift`(167) / `smoke_shift_import`(15) / `smoke_shift_month`(42) / `smoke_security`(57) /
-`smoke_photo`(69) / `smoke_ocr`(66) / `smoke_vault`(29) / `smoke_monthview`(42) /
-`smoke_yearview`(47) / `smoke_violation`(52)
+> 原先只跑「示例数据版」的 11 套（smoke / smoke_code / smoke_crud / smoke_ops / smoke_photos /
+> smoke_print / smoke_reports / smoke_settings / smoke_special / smoke_training / smoke_trend）
+> 随示例数据版一起移除（2026-11-05）。这些覆盖里有相当一部分已被上表的空白版套件接住。
 
 ### 骨架（`assets/skeleton`，19 项）
 
@@ -78,7 +66,7 @@ node tests/smoke_skeleton.js http://127.0.0.1:8132/index.html
 
 ```bash
 # 1) 生成出件专用页
-node tests/build_print_fixture.js http://127.0.0.1:8126/index.html ./_print_test.html
+node tests/build_print_fixture.js http://127.0.0.1:8124/index.html ./_print_test.html
 # 2) 用 Chrome 打印成 PDF 并数页数
 node scripts/print_probe.js ./_print_test.html ./out.pdf
 ```
