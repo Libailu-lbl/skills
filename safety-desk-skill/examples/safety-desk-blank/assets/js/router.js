@@ -94,14 +94,13 @@ SD.router = (function () {
   }
 
   /* ---------------- 下拉菜单（★ 2026-11-05） ----------------
-     特种作业 / 更多 / 报表 三处原来分别是「常驻展开的子菜单」「整组折叠」「小分组标题」，
-     三种形态并存、用户要记三套规则。现统一成同一套下拉：
-       · 点击：展开/收起（点开的会「钉住」，鼠标移开也不收）
-       · 悬停：桌面端移入即展开，移开 260ms 后自动收起（触屏设备不绑 hover）
-       · 互斥：同一时间只有一个**并列**下拉展开；父子层级（更多 → 报表）可以同时展开
+     特种作业 / 报表 / 更多 三处统一成同一套下拉：
+       · **只有点击才开合**：★ 2026-11-05 起取消「悬停自动展开」，
+         鼠标移入 / 移出不再触发任何展开或收起动作（避免误触把菜单弹开、也避免移开就收）
+       · 互斥：同一时间只有一个下拉展开（三者同处一层，不存在父子嵌套）
        · 图标指示：父项右侧箭头随展开旋转 180°；子树内激活时父项加 .in-tree 高亮
        · 状态记忆：dropOpen 记住用户显式开合，renderNav 重建 DOM 后按它恢复，
-         不会「点一下筛选就把菜单收回去」；离开时自动按当前页展开所属分支
+         不会「点一下筛选就把菜单收回去」；换页时按当前页自动展开所属分支
      ========================================================= */
 
   var dropOpen = {};                                  // key → bool（只记用户显式操作过的）
@@ -159,7 +158,6 @@ SD.router = (function () {
       if (!visibleDrop(d)) return;
       dropOpen[d.dataset.drop] = false;
       applyDrop(d, false);
-      d.dataset.pin = '';
     });
   }
 
@@ -221,38 +219,23 @@ SD.router = (function () {
       body.appendChild(it.kind === 'drop' ? dropNode(it, activeId, counts) : plainNode(it.route, activeId, counts));
     });
 
-    /* ---- 点击：展开/收起。点开 = 钉住（鼠标移开不自动收） ---- */
+    /* ---- 点击：**唯一的开合入口**（悬停不参与，鼠标移入/移出不改状态） ---- */
     head.addEventListener('click', function (e) {
       e.preventDefault();
       if (locked) { U.toast('无权限访问：' + desc.name + '（当前角色不可见）', 'err'); return; }
       if (wrap.dataset.open === '1') {
-        wrap.dataset.pin = '';
         setDrop(wrap, desc.key, false);
         return;
       }
-      wrap.dataset.pin = '1';
       setDrop(wrap, desc.key, true);
       /* 父项自己有落地页（特种作业）且当前不在它的子树里 → 顺手进去；
          已经在里面就只切展开，免得「想收起菜单却被弹回落地页」 */
       if (desc.nav && !subtreeHas(desc.nav, activeId)) go(desc.nav.id);
     });
 
-    /* ---- 悬停：桌面端移入展开、移开自动收（触屏不绑，避免点一次又立刻收起） ---- */
-    var touch = !!(window.matchMedia && window.matchMedia('(hover: none)').matches);
-    if (!touch) {
-      wrap.addEventListener('mouseenter', function () {
-        wrap.dataset.hover = '1';
-        if (wrap.dataset.open !== '1') setDrop(wrap, desc.key, true);
-      });
-      wrap.addEventListener('mouseleave', function () {
-        wrap.dataset.hover = '0';
-        if (wrap.dataset.pin === '1') return;      // 点开的保持
-        window.setTimeout(function () {
-          if (wrap.dataset.hover === '1' || wrap.dataset.pin === '1') return;
-          if (wrap.dataset.open === '1') setDrop(wrap, desc.key, false);
-        }, 260);
-      });
-    }
+    /* 注意：这里**不再绑定 mouseenter / mouseleave**。
+       悬停开合容易误触（鼠标划过整列菜单会被逐个弹开），且与「点击展开」语义冲突，
+       2026-11-05 按需求取消；视觉上的 hover 高亮仍由 CSS 的 :hover 负责。 */
     return wrap;
   }
 
@@ -348,7 +331,6 @@ SD.router = (function () {
       Array.prototype.forEach.call(document.querySelectorAll('.nav-drop[data-open="1"]'), function (d) {
         dropOpen[d.dataset.drop] = false;
         applyDrop(d, false);
-        d.dataset.pin = '';
       });
     });
   }

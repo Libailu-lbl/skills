@@ -7,7 +7,7 @@
      ② 初始状态：只有「报表」默认展开（其它两个按当前页决定）
      ③ 点击展开 / 收起，父项自己有页面时顺带进入
      ④ 互斥：同一时间只有一个并列下拉展开；父子层级可同时展开
-     ⑤ 悬停展开、移开 260ms 自动收起；点开的钉住不自动收
+     ⑤ 悬停不触发任何开合（2026-11-05 取消悬停展开），只有点击才展开/收起
      ⑥ 换页自动展开所属分支，父项高亮 in-tree、子项 active
      ⑦ 同页重绘保留手动开合；换页回到默认
      ⑧ Esc 收起全部
@@ -132,19 +132,27 @@ function ok(name, cond, extra) {
   ok('展开「更多」会收起「报表」（两者并列互斥）', !isOpen('reports') && isOpen('more'),
     'reports=' + isOpen('reports') + ' more=' + isOpen('more'));
 
-  /* ================= 5. 悬停 ================= */
-  console.log('== 5. 悬停展开 / 移开收起 ==');
-  await click(headOf('more'));                 // 先点一下收起，清掉 pin
-  ok('「更多」已收起（为悬停测试做准备）', !isOpen('more'));
+  /* ================= 5. 悬停不触发开合（★ 2026-11-05 取消悬停展开） ================= */
+  console.log('== 5. 悬停不触发开合 ==');
+  await click(headOf('more'));                 // 先点一下收起
+  ok('「更多」已收起（悬停测试准备）', !isOpen('more'));
   await hover('more', 'mouseenter');
-  ok('鼠标移入「更多」→ 自动展开', isOpen('more'));
+  ok('收起状态：鼠标移入不展开', !isOpen('more'));
+  await wait(400);                              // 超过原来 260ms 的延时，确认不是「延迟展开」
+  ok('移入后再等一会儿仍不展开', !isOpen('more'));
   await hover('more', 'mouseleave');
-  ok('鼠标移开 260ms 后 → 自动收起', !isOpen('more'));
+  ok('收起状态：鼠标移出也不改变', !isOpen('more'));
 
-  await click(headOf('more'));                 // 点开 = 钉住
-  ok('点击展开（钉住）', isOpen('more'));
+  await click(headOf('more'));
+  ok('点击才是展开入口', isOpen('more'));
   await hover('more', 'mouseleave');
-  ok('点开的下拉，鼠标移开也不收', isOpen('more'), 'pin=' + wrapOf('more').dataset.pin);
+  ok('展开后鼠标移出 → 不会自动收起', isOpen('more'));
+  await hover('more', 'mouseenter');
+  ok('展开后鼠标移入 → 保持展开', isOpen('more'));
+  await click(headOf('more'));
+  ok('再点一次才收起', !isOpen('more'));
+  ok('DOM 上不再有 pin / hover 这类悬停痕迹',
+    !/data-(pin|hover)/.test(wrapOf('more').outerHTML), wrapOf('more').outerHTML.slice(0, 80));
 
   /* ================= 6. 换页自动展开所属分支 ================= */
   console.log('== 6. 换页自动展开所属分支 ==');
