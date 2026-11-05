@@ -24,7 +24,10 @@ SD.comp.dialog = (function () {
   var escHandler = null;
 
   /**
-   * @param {object} o {title, body, okText, cancelText, danger, hint, width, onOk, onMount}
+   * @param {object} o {title, body, okText, cancelText, danger, hint, width, hideCancel, readonly, onOk, onMount}
+   *   hideCancel —— 只读弹窗只留一个「关闭」，不出现两个作用相同的按钮
+   *   readonly   —— 纯展示弹窗：确定键用 ghost 样式。受限模式下 .btn.primary 会被写操作守卫拦下，
+   *                 只读弹窗若用 primary 会出现「点了关不掉」的问题
    *   onMount(modalEl) —— 弹窗插入 DOM 之后触发。
    *   用途：body 里放的是占位容器，真正需要绑事件的控件（如照片选择器）
    *   必须等进了 DOM 才能初始化，否则 querySelector 拿不到。
@@ -42,8 +45,10 @@ SD.comp.dialog = (function () {
           '<div class="modal-body"></div>' +
           '<div class="modal-foot">' +
             (o.hint ? '<span class="hint">' + U.esc(o.hint) + '</span>' : '') +
-            '<button class="btn ghost js-cancel">' + U.esc(o.cancelText || '取消') + '</button>' +
-            '<button class="btn ' + (o.danger ? 'danger' : 'primary') + ' js-ok">' + U.esc(o.okText || '确定') + '</button>' +
+            /* hideCancel：只读弹窗（如「功能使用统计」）只留一个关闭按钮，省得两个按钮做同一件事 */
+            (o.hideCancel ? '' : '<button class="btn ghost js-cancel">' + U.esc(o.cancelText || '取消') + '</button>') +
+            '<button class="btn ' + (o.readonly ? 'ghost' : (o.danger ? 'danger' : 'primary')) + ' js-ok">' +
+              U.esc(o.okText || '确定') + '</button>' +
           '</div>' +
         '</div>' +
       '</div>'
@@ -69,7 +74,8 @@ SD.comp.dialog = (function () {
     }
 
     modal.querySelector('.modal-close').addEventListener('click', close);
-    modal.querySelector('.js-cancel').addEventListener('click', close);
+    var cancelBtn = modal.querySelector('.js-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', close);
     modal.addEventListener('mousedown', function (e) { if (e.target === modal) close(); });
 
     escHandler = function (e) { onEsc(e, close); };

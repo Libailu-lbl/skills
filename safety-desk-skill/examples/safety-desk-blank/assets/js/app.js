@@ -177,9 +177,12 @@ SD.app = (function () {
     SD.router.renderNav(els, id, navCounts());
     SD.router.bindMore();
 
-    // 1.5) 使用频率：真正切到另一页才 +1（同一页反复刷新不重复计），
-    //      随后重排「常用功能」，让用得多的排前面
-    if (lastCountedId !== id) {
+    // 1.5) 使用频率：**用户主动切页**才 +1，随后重排「常用功能」
+    //      首屏自动落到默认页不算使用（那不是用户的选择，也算进去会把「安全概览」永久顶在第一）；
+    //      同一页反复刷新 / 重绘不重复计。
+    if (lastCountedId === null) {
+      lastCountedId = id;
+    } else if (lastCountedId !== id) {
       lastCountedId = id;
       if (SD.usage) SD.usage.bump(id);
     }
@@ -339,7 +342,7 @@ SD.app = (function () {
     h.flow = h.flow || [];
     h.flow.push({
       at: s.today + ' ' + new Date().toTimeString().slice(0, 5),
-      by: '王安全', from: from, to: NAME[next], note: '待办区一键推进'
+      by: '李佰陆', from: from, to: NAME[next], note: '待办区一键推进'
     });
     applyLocal();
 
@@ -437,7 +440,7 @@ SD.app = (function () {
         '<span class="t-3 t-sm">正方形效果最好，会自动缩到 96×96</span></div>' +
       '</div>' +
       '<label class="field"><span class="lbl">工作台名称</span>' +
-        '<input class="input" id="setName" maxlength="20" value="' + U.esc(cur.appName) + '" placeholder="如：示例 EHS 台">' +
+        '<input class="input" id="setName" maxlength="20" value="' + U.esc(cur.appName) + '" placeholder="如：梦百合 EHS 台">' +
       '</label>' +
       '<label class="field"><span class="lbl">副标题</span>' +
         '<input class="input" id="setSub" maxlength="30" value="' + U.esc(cur.appSub) + '" placeholder="如：日常安全办公">' +
@@ -738,44 +741,169 @@ SD.app = (function () {
       : '当前：受限用户（只能查看 / 打印 / 导出）。点一下输入六位密码进入安全员权限';
   }
 
-  /* ---------------- 侧栏常用功能快捷入口（位于左侧导航下方） ----------------
-     只放真实可用的功能，不做「待接入」占位按钮。
-     ★ 2026-11-05 起**按实际使用频率排序**：key 与路由 id 对齐（导出台账这类非页面动作用 act: 前缀），
-     计数在 renderView 里「真正切到该页」时 +1，这里按 SD.usage.rank 重排，
-     所以用着用着顺序会自己变，用得多的排到前面。 */
-  var QUICKS = [
-    { key: 'hazard',     icon: 'plus',       text: '登记隐患', onClick: function () { SD.app.go('hazard', { openDialog: 1 }); } },
-    { key: 'todo',       icon: 'todo',       text: '待办任务', onClick: function () { SD.app.go('todo'); } },
-    { key: 'inspection', icon: 'inspection', text: '巡检打卡', onClick: function () { SD.app.go('inspection'); } },
-    { key: 'training',   icon: 'training',   text: '安全培训', onClick: function () { SD.app.go('training'); } },
-    { key: 'dashboard',  icon: 'trendUp',    text: '数据看板', onClick: function () { SD.app.go('dashboard'); } },
-    { key: 'act:export', icon: 'download',   text: '导出台账',
-      onClick: function () {
-        /* 导出不是页面，没有路由可挂，这里手动记一次 */
-        if (SD.usage) SD.usage.bump('act:export');
-        SD.app.exportData();
-      } }
-  ];
+  /* ---------------- 侧栏「常用功能」（全部菜单统一排名，只显示前 6） ----------------
+     ★ 2026-11-05 晚改：原先这里是 6 个写死的快捷动作（登记隐患 / 导出台账…），
+       只在它们内部排名；现在改成**统计全部菜单**——15 个页面级功能一起排，
+       只把前 6 名放进侧栏，用得多的自然浮上来，没用过的新功能不会永久霸榜。
+     排序与并列规则集中在 usage.js（次数 ↓ → 最近使用 ↓ → 菜单顺序 ↑），
+     口径文案也复用它导出的 SD.usage.RULES，保证 tooltip / 弹窗 / README 三处一致。 */
+  var QUICK_LIMIT = 6;
+
+  /** 统计候选：路由表全量。当前角色打不开的标 locked —— 不排名、不占名额，免得点了没反应 */
+  function quickCatalog() {
+    return (SD.router.ROUTES || []).map(function (r) {
+      return {
+        key: r.id,
+        icon: r.icon,
+        text: r.short || r.name,
+        full: r.name,
+        locked: !!(r.perm && !SD.auth.can(r.perm))
+      };
+    });
+  }
+
+  /** 最近使用时间：今天只显示「今天 HH:mm」，跨年才带年份 */
+  function whenText(ts) {
+    if (!ts) return '—';
+    var d = new Date(ts);
+    var today = U.today();
+    var iso = U.iso(d);
+    if (iso === today) {
+      return '今天 ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    }
+    if (iso.slice(0, 4) !== today.slice(0, 4)) return U.fmtTime(ts);
+    return U.fmtTime(ts).slice(5, 16);      // MM-DD HH:mm
+  }
 
   function renderSidebarQuick() {
     var box = document.querySelector('.js-sidebar-quick');
     if (!box) return;
     U.clear(box);
-    var list = SD.usage ? SD.usage.rank(QUICKS) : QUICKS.slice();
-    list.forEach(function (q) {
-      var n = SD.usage ? SD.usage.count(q.key) : 0;
-      /* title 把依据摊开给用户看：这个按钮本机用过几次 */
-      q.title = q.text + ' · 本机用过 ' + n + ' 次' + (n ? '' : '（还没用过）');
-      box.appendChild(SD.comp.listItem.quick(q));
+
+    var list = quickCatalog(), byKey = {};
+    list.forEach(function (x) { byKey[x.key] = x; });
+
+    var b = SD.usage ? SD.usage.board(list, QUICK_LIMIT)
+      : { rows: list.slice(0, QUICK_LIMIT), noData: true, cutTies: 0, cutN: 0 };
+
+    b.rows.forEach(function (row, i) {
+      var it = byKey[row.key] || { icon: 'external', text: row.key, full: row.key };
+      var n = row.n || 0;
+      var rank = row.rank || (i + 1);
+      /* title 把依据摊开：第几名、本机用过几次、最近什么时候；没用过的说明是补位 */
+      var title = n
+        ? it.text + ' · 第 ' + rank + ' 名 · 本机用过 ' + n + ' 次（最近 ' + whenText(row.last) + '） · 点击进入'
+        : it.text + ' · 本机还没用过' + (b.noData ? ' · 按菜单默认顺序展示' : ' · 空位补进前六') + ' · 点击进入';
+      box.appendChild(SD.comp.listItem.quick({
+        icon: it.icon,
+        text: it.text,
+        title: title,
+        onClick: function () { go(row.key); }
+      }));
     });
-    /* 标题旁的小问号：触屏上 title 看不到，点一下用 toast 说清楚排序依据 */
+
+    /* 一句话交代「为什么是这几个」：没记录说默认顺序，有并列落选说人数 */
+    var note = '';
+    if (b.noData) note = '暂无使用记录，按菜单默认顺序展示';
+    else if (b.cutTies) note = '另有 ' + b.cutTies + ' 项同为 ' + b.cutN + ' 次，未进前六';
+    if (note) box.appendChild(U.h('<div class="quick-note">' + U.esc(note) + '</div>'));
+
+    /* 标题旁的小问号：触屏上 title 看不到，点开看完整排名与口径说明 */
     var hint = document.getElementById('quickHint');
     if (hint && hint.dataset.bound !== '1') {
       hint.dataset.bound = '1';
-      hint.addEventListener('click', function () {
-        U.toast('常用功能按本机使用频率排序：进入一次记一次（同页刷新不重复计），数据只存这台设备');
-      });
+      hint.addEventListener('click', openUsageStats);
     }
+  }
+
+  /** 「功能使用统计」弹窗：把全部菜单的名次 / 次数 / 占比摊开，并把四条口径写清楚 */
+  function openUsageStats() {
+    if (!SD.usage) { U.toast('统计模块未加载，无法查看'); return; }
+
+    var list = quickCatalog(), byKey = {};
+    list.forEach(function (x) { byKey[x.key] = x; });
+
+    var b = SD.usage.board(list, QUICK_LIMIT);
+    var R = SD.usage.RULES;
+    var topKeys = {};
+    b.rows.forEach(function (r) { topKeys[r.key] = 1; });
+
+    function nameCell(it, tag, tagCls) {
+      return '<td class="usg-name">' + SD.icons.get(it.icon || 'file', 14) +
+        '<span>' + U.esc(it.full || it.text || '') + '</span>' +
+        (tag ? '<span class="usg-tag' + (tagCls ? ' ' + tagCls : '') + '">' + U.esc(tag) + '</span>' : '') +
+        '</td>';
+    }
+
+    var rows = b.ranked.map(function (r) {
+      var it = byKey[r.key] || { text: r.key };
+      var isTop = !!topKeys[r.key];
+      return '<tr class="' + (isTop ? 'is-top ' : '') + (r.n ? '' : 'is-zero') + '">' +
+          '<td class="usg-rank">' + (r.rank ? r.rank : '—') + '</td>' +
+          nameCell(it, isTop ? (r.n ? '前六' : '补位') : '', r.n ? '' : 'gray') +
+          '<td class="usg-num">' + r.n + '</td>' +
+          '<td class="usg-share">' + (b.sum ? Math.round(r.share * 100) + '%' : '—') + '</td>' +
+          '<td class="usg-when">' + U.esc(whenText(r.last)) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    var lockedRows = b.locked.map(function (r) {
+      var it = byKey[r.key] || { text: r.key };
+      return '<tr class="is-zero is-locked">' +
+          '<td class="usg-rank">—</td>' +
+          nameCell({ icon: 'lock', full: it.full || it.text }, '需安全员', 'gray') +
+          '<td class="usg-num">' + r.n + '</td>' +
+          '<td class="usg-share">—</td>' +
+          '<td class="usg-when">' + U.esc(whenText(r.last)) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    var body =
+      '<div class="usg-rules">' +
+        '<p><b>统计范围</b>' + U.esc(R.scope) + '</p>' +
+        '<p><b>排序规则</b>' + U.esc(R.order) + '</p>' +
+        '<p><b>并列处理</b>' + U.esc(R.tie) + '</p>' +
+        '<p><b>空数据</b>' + U.esc(R.empty) + '</p>' +
+        '<p class="usg-muted">' + U.esc(R.count) + '</p>' +
+      '</div>' +
+      '<div class="usg-sum">本机合计 <b>' + b.sum + '</b> 次 · 参与排名 ' + b.total + ' 项' +
+        (b.locked.length ? ' · 当前角色另有 ' + b.locked.length + ' 项不可用（只统计不排名）' : '') +
+        (b.noData ? ' · <b>暂无使用记录</b>' : '') + '</div>' +
+      '<div class="usg-scroll"><table class="usg">' +
+        '<thead><tr><th>名次</th><th>功能</th><th>次数</th><th>占比</th><th>最近使用</th></tr></thead>' +
+        '<tbody>' + rows + lockedRows + '</tbody>' +
+      '</table></div>' +
+      '<div class="usg-actions">' +
+        '<button class="btn ghost sm" type="button" data-usage-reset>清空统计</button>' +
+        '<span class="usg-hint">清空后回到菜单默认顺序，业务数据不受影响</span>' +
+      '</div>';
+
+    var dlg = SD.comp.dialog.open({
+      title: '功能使用统计',
+      width: 680,
+      body: body,
+      okText: '关闭',
+      hideCancel: true,
+      readonly: true,          // 纯展示：关闭键用 ghost，受限模式下也不会被写操作守卫拦掉
+      onMount: function (modal) {
+        var btn = modal.querySelector('[data-usage-reset]');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+          SD.comp.dialog.confirm({
+            title: '清空使用统计',
+            message: '清空后「常用功能」回到菜单默认顺序，累计次数归零。业务数据不受影响。',
+            okText: '确认清空',
+            danger: true,
+            onOk: function () {
+              SD.usage.reset();
+              dlg.close();
+              refreshAll();
+              U.toast('使用统计已清空，常用功能回到默认顺序');
+            }
+          });
+        });
+      }
+    });
   }
 
   /* ---------------- 顶部工具栏 ---------------- */

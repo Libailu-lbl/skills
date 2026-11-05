@@ -174,9 +174,10 @@ compute() 算指标 → renderNav() → renderView() → syncRole()
 - `group: primary` → 左侧「常用」常驻；`secondary` → 下方二级区
 - `subGroup: 'reports'` → 单独成「报表」下拉，**与「更多」并列且排在它前面**（★ 2026-11-05）：
   渲染时先出各 subGroup 的下拉，再出「更多」（只装不带 subGroup 的项），所以层级与缩进完全一致
-- 三处下拉共用同一套：点击/悬停展开、同级互斥、`.in-tree` 高亮、`aria-expanded` + 箭头旋转
-- 「常用功能」顺序来自 `SD.usage.rank()`：按使用次数降序 → 最近使用 → 内置顺序，
-  数据存本机 `localStorage.sd_usage_v1`（只在本设备生效）
+- 三处下拉共用同一套：**只有点击才展开**（悬停不触发，2026-11-05 取消）、同级互斥、`.in-tree` 高亮、`aria-expanded` + 箭头旋转
+- 「常用功能」= 全菜单排行榜前 6：`SD.usage.board(全部路由, 6)` 一次给出前六 / 其余 / 不可用项 / 空数据标记；
+  排序为「次数降序 → 最近使用 → 菜单内置顺序」，第三级是定序兜底，同次数不跳位；
+  当前角色打不开的路由只统计不排名（不占名额），数据存本机 `localStorage.sd_usage_v1`
 - `perm` → 无权限时导航显示锁 + 点进去渲染「无权限」占位页（**门禁在 app.refreshAll 里统一做**，不在每个 view 里判断）
 
 ---

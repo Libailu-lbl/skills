@@ -18,9 +18,12 @@ window.SD = window.SD || {};
 SD.router = (function () {
   var U = SD.utils;
 
-  /* 路由表：id → {name, icon, group, [subGroup], [perm], [parent], [children]}
+  /* 路由表：id → {name, icon, group, [subGroup], [perm], [parent], [children], [short]}
      group：primary=常用（常驻，含特种作业父级）｜secondary=更多（折叠）
-     subGroup：更多组内的小分组标签（报表：日报/周报） */
+     subGroup：更多组内的小分组标签（报表：日报/周报）
+     short：侧栏「常用功能」磁贴用的短名（不给就用 name）——磁贴窄，全名会换行
+     ★ 这张表同时也是**使用频率统计的范围**：15 项都是页面级功能（都有独立视图），
+       报表 / 更多只做折叠、没有落点，不在表里，也就不进统计 */
   var ROUTES = [
     { id: 'overview',   name: '安全概览',   icon: 'overview',   group: 'primary' },
     { id: 'todo',       name: '待办任务',   icon: 'todo',       group: 'primary' },
@@ -33,9 +36,9 @@ SD.router = (function () {
     /* 报表：日报 / 周报（按当日/本周工作自动生成，可导出 Excel），归入「更多」折叠组 */
     { id: 'dailyReport',  name: '日报', icon: 'daily',  group: 'secondary', subGroup: 'reports' },
     { id: 'weeklyReport', name: '周报', icon: 'weekly', group: 'secondary', subGroup: 'reports' },
-    { id: 'shiftLog', name: '安全巡检交接班记录', icon: 'clipboard', group: 'secondary', subGroup: 'reports' },
+    { id: 'shiftLog', name: '安全巡检交接班记录', short: '交接班记录', icon: 'clipboard', group: 'secondary', subGroup: 'reports' },
     /* 安全违章考核单（★ 2026-11-04）：一单一次违章，编号 FZKH-001，默认看全年 */
-    { id: 'violation', name: '安全违章考核单', icon: 'file', group: 'secondary', subGroup: 'reports' },
+    { id: 'violation', name: '安全违章考核单', short: '违章考核单', icon: 'file', group: 'secondary', subGroup: 'reports' },
 
     /* 特种作业：常用区里的独立父级菜单项（带子菜单与权限门禁），
        子项由 navItem 递归渲染在父级下方，不单独进组 */

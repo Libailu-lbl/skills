@@ -11,7 +11,9 @@
      ⑥ 换页自动展开所属分支，父项高亮 in-tree、子项 active
      ⑦ 同页重绘保留手动开合；换页回到默认
      ⑧ Esc 收起全部
-     ⑨ 常用功能：默认顺序 → 按使用次数重排 → 次数写进本机 → 同页刷新不重复计 → reset 复原
+     ⑨ 常用功能：统计全部 15 个菜单页面 → 只取前 6 → 次数/最近使用/菜单顺序三级排序 →
+        并列落选有注明 → 空数据回退默认顺序 → 受限模式剔除打不开的功能 →
+        问号弹窗列出全部名次与四条口径
 */
 const { JSDOM } = require('jsdom');
 const URL_ = process.argv[2] || 'http://127.0.0.1:8127/index.html';
@@ -203,35 +205,119 @@ function ok(name, cond, extra) {
   ok('按 Esc 收起展开中的下拉', !isOpen('reports') && !isOpen('more'),
     'reports=' + isOpen('reports') + ' more=' + isOpen('more'));
 
-  /* ================= 9. 常用功能按频率排序 ================= */
-  console.log('== 9. 常用功能：按使用频率排序 ==');
-  ok('默认按内置顺序展示 6 个入口',
-    quicks().join(',') === '登记隐患,待办任务,巡检打卡,安全培训,数据看板,导出台账',
-    quicks().join(','));
-  ok('每个入口的 title 写明本机用过几次',
-    /本机用过 \d+ 次/.test(doc.querySelector('.js-sidebar-quick .quick').getAttribute('title')),
-    doc.querySelector('.js-sidebar-quick .quick').getAttribute('title'));
+  /* ================= 9. 常用功能：全部菜单统一排名，只显示前 6 ================= */
+  console.log('== 9. 常用功能：全部菜单排名 + 前六截断 ==');
+  const MENU = SD.router.ROUTES;
+  const note = () => { const n = doc.querySelector('.js-sidebar-quick .quick-note'); return n ? n.textContent.trim() : ''; };
+  const resetAll = async () => { SD.usage.reset(); SD.app.refreshAll(); await wait(450); };
+  const titleOf = t => {
+    const b = Array.from(doc.querySelectorAll('.js-sidebar-quick .quick')).filter(x => x.textContent.trim() === t)[0];
+    return b ? b.getAttribute('title') : '';
+  };
+
+  ok('统计范围 = 路由表全部页面功能，共 15 项', MENU.length === 15, MENU.map(r => r.id).join(','));
+
+  await resetAll();
+  ok('全部 0 次时按菜单内置顺序展示前 6 项',
+    quicks().join(',') === '安全概览,待办任务,隐患管理,安全巡检,安全培训,数据看板', quicks().join(','));
+  ok('15 个候选里只展示 6 个', quicks().length === 6, String(quicks().length));
+  ok('空数据给出「默认顺序」说明',
+    note() === '暂无使用记录，按菜单默认顺序展示', note());
+  ok('首屏落在当前页不计次数（概览仍为 0）', SD.usage.count('overview') === 0, SD.usage.count('overview'));
 
   SD.usage.bump('dashboard', 3);
   SD.app.refreshAll();
-  await wait(400);
+  await wait(450);
   ok('用 3 次「数据看板」后排到第一位', quicks()[0] === '数据看板', quicks().join(','));
-  ok('title 里的次数同步更新',
-    /本机用过 3 次/.test(Array.from(doc.querySelectorAll('.js-sidebar-quick .quick'))
-      .filter(b => b.textContent.trim() === '数据看板')[0].getAttribute('title')));
+  ok('title 写明名次与次数', /第 1 名 · 本机用过 3 次/.test(titleOf('数据看板')), titleOf('数据看板'));
 
-  SD.usage.bump('training', 5);
+  SD.usage.bump('violation', 4);           // 旧版 6 个写死入口里没有它
   SD.app.refreshAll();
-  await wait(400);
-  ok('「安全培训」5 次后超过「数据看板」，排第一', quicks()[0] === '安全培训', quicks().join(','));
-  ok('次数少的排在后面（导出台账 0 次垫底）', quicks().slice(-1)[0] === '导出台账', quicks().join(','));
+  await wait(450);
+  ok('不在旧快捷入口里的功能（违章考核单）也能凭次数进前六并排第一',
+    quicks()[0] === '违章考核单' && quicks().length === 6, quicks().join(','));
+  ok('0 次的功能被挤出前六（通知公告）', quicks().indexOf('通知公告') < 0, quicks().join(','));
 
+  /* 并列：次数相同 → 最近用过的在前 */
+  await resetAll();
+  SD.usage.bump('notice', 2);
+  await wait(40);
+  SD.usage.bump('training', 2);
+  SD.app.refreshAll();
+  await wait(450);
+  ok('次数相同看最近使用：后用的「安全培训」排在「通知公告」前',
+    quicks().join(',') === '安全培训,通知公告,安全概览,待办任务,隐患管理,安全巡检', quicks().join(','));
+
+  /* 并列落选：7 项同为 1 次时，第 6 名只有一席，落选的要被注明 */
+  await resetAll();
+  for (const k of ['overview', 'todo', 'hazard', 'inspection', 'training', 'dashboard', 'notice']) {
+    SD.usage.bump(k, 1);
+    await wait(25);
+  }
+  SD.app.refreshAll();
+  await wait(450);
+  ok('7 项同为 1 次：最后用的「通知公告」排第一', quicks()[0] === '通知公告', quicks().join(','));
+  ok('最早用的「安全概览」被挤出前六', quicks().indexOf('安全概览') < 0, quicks().join(','));
+  ok('并列落选在下方注明，不隐藏',
+    note() === '另有 1 项同为 1 次，未进前六', note());
+
+  /* 权限：解锁不了的功能不参与排名、不占名额 */
+  SD.auth.set('restricted');
+  SD.usage.bump('specPermit', 9);          // 模拟「以前解锁时用过很多次，现在受限」
+  SD.app.refreshAll();
+  await wait(500);
+  const LOCKED = ['特种作业', '特种作业人员', '特种设备人员', '危险作业票'];
+  ok('受限模式下特种作业 4 项不进前六（点了也打不开）',
+    quicks().every(t => LOCKED.indexOf(t) < 0), quicks().join(','));
+  ok('受限模式仍补满 6 项', quicks().length === 6, String(quicks().length));
+  ok('受限模式下仍记着「危险作业票」的 9 次（只统计不排名）', SD.usage.count('specPermit') === 9,
+    SD.usage.count('specPermit'));
+  await click(doc.getElementById('quickHint'));
+  const dlgR = doc.querySelector('.mask .modal');
+  ok('受限模式的统计弹窗把 4 项标成「需安全员」',
+    dlgR.querySelectorAll('table.usg tr.is-locked').length === 4,
+    String(dlgR.querySelectorAll('table.usg tr.is-locked').length));
+  ok('不可用项名次显示「—」，前六仍是 6 行',
+    dlgR.querySelector('table.usg tr.is-locked .usg-rank').textContent === '—' &&
+    dlgR.querySelectorAll('table.usg tr.is-top').length === 6);
+  await click(dlgR.querySelector('.js-ok'));
+  SD.auth.set('safety_officer');
+  SD.app.refreshAll();
+  await wait(500);
+
+  /* 点磁贴直达 */
+  await resetAll();
+  SD.usage.bump('hazard', 2);
+  SD.app.refreshAll();
+  await wait(450);
+  await click(doc.querySelector('.js-sidebar-quick .quick'));
+  ok('点第一个磁贴直达该功能（隐患管理）', SD.router.current() === 'hazard', SD.router.current());
+
+  /* 「?」打开完整统计：全部 15 项 + 四条口径 + 前六标记 */
+  await resetAll();
+  await click(doc.getElementById('quickHint'));
+  const dlg = doc.querySelector('.mask .modal');
+  ok('问号打开「功能使用统计」弹窗', !!dlg && /功能使用统计/.test(dlg.textContent),
+    dlg ? dlg.querySelector('h3').textContent : '未打开');
+  ok('弹窗列出全部 15 个功能', dlg.querySelectorAll('table.usg tbody tr').length === 15,
+    String(dlg.querySelectorAll('table.usg tbody tr').length));
+  ok('弹窗写明统计范围 / 排序规则 / 并列处理 / 空数据四条口径',
+    ['统计范围', '排序规则', '并列处理', '空数据'].every(t => dlg.textContent.indexOf(t) >= 0));
+  ok('弹窗标出前六（6 行 is-top）', dlg.querySelectorAll('table.usg tr.is-top').length === 6,
+    String(dlg.querySelectorAll('table.usg tr.is-top').length));
+  ok('只读弹窗只留一个关闭按钮', dlg.querySelectorAll('.modal-foot .btn').length === 1,
+    String(dlg.querySelectorAll('.modal-foot .btn').length));
+  await click(dlg.querySelector('.js-ok'));
+  ok('关闭后弹窗移除', !doc.querySelector('.mask'));
+
+  /* 计数落本机 + 切页口径 */
+  await resetAll();
+  SD.usage.bump('training', 5);
   const raw = win.localStorage.getItem('sd_usage_v1');
-  ok('计数写进本机 localStorage（sd_usage_v1）', !!raw && /"training"\s*:\s*5/.test(raw),
+  ok('计数写进本机 localStorage（sd_usage_v1）', !!raw && /"training":5/.test(raw.replace(/\s/g, '')),
     (raw || '').slice(0, 120));
   ok('统计接口能读到同一份数据', SD.usage.count('training') === 5, SD.usage.count('training'));
 
-  /* 切页计数：进入新页 +1；同页刷新不重复计 */
   const c0 = SD.usage.count('todo');
   await goHash('#/todo');
   ok('切到待办页 → 计数 +1', SD.usage.count('todo') === c0 + 1, c0 + ' → ' + SD.usage.count('todo'));
@@ -241,11 +327,15 @@ function ok(name, cond, extra) {
 
   SD.usage.reset();
   SD.app.refreshAll();
-  await wait(400);
-  ok('reset 后恢复默认顺序',
-    quicks().join(',') === '登记隐患,待办任务,巡检打卡,安全培训,数据看板,导出台账',
+  await wait(450);
+  ok('reset 后恢复菜单默认顺序',
+    quicks().join(',') === '安全概览,待办任务,隐患管理,安全巡检,安全培训,数据看板',
     quicks().join(','));
   ok('reset 后计数清零', SD.usage.count('training') === 0, SD.usage.count('training'));
+  ok('board 接口口径自洽（前 6 + 其余 = 参与排名的全部）', (() => {
+    const b = SD.usage.board(MENU.map(r => ({ key: r.id })), 6);
+    return b.rows.length === 6 && b.rows.length + b.rest.length === b.total && b.total === 15;
+  })());
 
   /* ================= 10. 无错误 ================= */
   console.log('== 10. 运行期无 JS 错误 ==');
