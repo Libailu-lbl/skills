@@ -81,10 +81,12 @@ function ok(name, cond, extra) {
 
   /* ---------- 2. 导航挂载 ---------- */
   console.log('== 2. 导航：报表分组下的交接班记录 ==');
-  const more = Array.from(doc.querySelectorAll('#navSecondary > *')).map(el =>
-    el.classList.contains('nav-sub-title') ? '[' + el.textContent.trim() + ']' : (el.querySelector('.txt') || {}).textContent);
-  ok('「更多」里有报表小分组', more.indexOf('[报表]') >= 0, more.join('|'));
-  ok('交接班记录排在报表分组内', more.indexOf('安全巡检交接班记录') > more.indexOf('[报表]'), more.join('|'));
+  /* ★ 2026-11-05：「报表」由小标题改成下拉，交接班记录在它的 body 里 */
+  const reportsDrop = doc.querySelector('#navSecondary .nav-drop[data-drop="reports"]');
+  ok('「更多」里有「报表」下拉', !!reportsDrop);
+  ok('交接班记录在「报表」下拉里',
+    !!reportsDrop && !!reportsDrop.querySelector('[data-route="shiftLog"]'),
+    reportsDrop ? Array.from(reportsDrop.querySelectorAll('[data-route]')).map(x => x.dataset.route).join(',') : '');
   ok('路由登记为 secondary/reports',
     SD.router && SD.router.find ? true : true);
 

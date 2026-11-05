@@ -177,6 +177,14 @@ SD.app = (function () {
     SD.router.renderNav(els, id, navCounts());
     SD.router.bindMore();
 
+    // 1.5) 使用频率：真正切到另一页才 +1（同一页反复刷新不重复计），
+    //      随后重排「常用功能」，让用得多的排前面
+    if (lastCountedId !== id) {
+      lastCountedId = id;
+      if (SD.usage) SD.usage.bump(id);
+    }
+    renderSidebarQuick();
+
     // 2) 顶部标题
     if (els.title) els.title.textContent = view.name;
     if (els.sub) {
@@ -252,6 +260,9 @@ SD.app = (function () {
        巡检   → 直接标记完成（补默认执行记录）
        作业票 → 按状态机推进（草稿→待审批→已批准→作业中→已完工；批准自动写审批人）
        培训   → 直接标记已完成 */
+  /* 上一次计过使用次数的页面：避免同一页反复 refreshAll 把次数刷上去 */
+  var lastCountedId = null;
+
   var PERMIT_ACT = { pending: '提交审批', approved: '批准', working: '开工', done: '标记完工' };
 
   function completeTodo(item) {
@@ -728,20 +739,43 @@ SD.app = (function () {
   }
 
   /* ---------------- 侧栏常用功能快捷入口（位于左侧导航下方） ----------------
-     只放真实可用的功能，不做「待接入」占位按钮。 */
+     只放真实可用的功能，不做「待接入」占位按钮。
+     ★ 2026-11-05 起**按实际使用频率排序**：key 与路由 id 对齐（导出台账这类非页面动作用 act: 前缀），
+     计数在 renderView 里「真正切到该页」时 +1，这里按 SD.usage.rank 重排，
+     所以用着用着顺序会自己变，用得多的排到前面。 */
+  var QUICKS = [
+    { key: 'hazard',     icon: 'plus',       text: '登记隐患', onClick: function () { SD.app.go('hazard', { openDialog: 1 }); } },
+    { key: 'todo',       icon: 'todo',       text: '待办任务', onClick: function () { SD.app.go('todo'); } },
+    { key: 'inspection', icon: 'inspection', text: '巡检打卡', onClick: function () { SD.app.go('inspection'); } },
+    { key: 'training',   icon: 'training',   text: '安全培训', onClick: function () { SD.app.go('training'); } },
+    { key: 'dashboard',  icon: 'trendUp',    text: '数据看板', onClick: function () { SD.app.go('dashboard'); } },
+    { key: 'act:export', icon: 'download',   text: '导出台账',
+      onClick: function () {
+        /* 导出不是页面，没有路由可挂，这里手动记一次 */
+        if (SD.usage) SD.usage.bump('act:export');
+        SD.app.exportData();
+      } }
+  ];
+
   function renderSidebarQuick() {
     var box = document.querySelector('.js-sidebar-quick');
     if (!box) return;
     U.clear(box);
-    var QUICKS = [
-      { icon: 'plus',       text: '登记隐患',   onClick: function () { SD.app.go('hazard', { openDialog: 1 }); } },
-      { icon: 'todo',       text: '待办任务',   onClick: function () { SD.app.go('todo'); } },
-      { icon: 'inspection', text: '巡检打卡',   onClick: function () { SD.app.go('inspection'); } },
-      { icon: 'training',   text: '安全培训',   onClick: function () { SD.app.go('training'); } },
-      { icon: 'trendUp',    text: '数据看板',   onClick: function () { SD.app.go('dashboard'); } },
-      { icon: 'download',   text: '导出台账',   onClick: function () { SD.app.exportData(); } }
-    ];
-    QUICKS.forEach(function (q) { box.appendChild(SD.comp.listItem.quick(q)); });
+    var list = SD.usage ? SD.usage.rank(QUICKS) : QUICKS.slice();
+    list.forEach(function (q) {
+      var n = SD.usage ? SD.usage.count(q.key) : 0;
+      /* title 把依据摊开给用户看：这个按钮本机用过几次 */
+      q.title = q.text + ' · 本机用过 ' + n + ' 次' + (n ? '' : '（还没用过）');
+      box.appendChild(SD.comp.listItem.quick(q));
+    });
+    /* 标题旁的小问号：触屏上 title 看不到，点一下用 toast 说清楚排序依据 */
+    var hint = document.getElementById('quickHint');
+    if (hint && hint.dataset.bound !== '1') {
+      hint.dataset.bound = '1';
+      hint.addEventListener('click', function () {
+        U.toast('常用功能按本机使用频率排序：进入一次记一次（同页刷新不重复计），数据只存这台设备');
+      });
+    }
   }
 
   /* ---------------- 顶部工具栏 ---------------- */

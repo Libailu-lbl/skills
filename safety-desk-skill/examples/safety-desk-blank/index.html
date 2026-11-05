@@ -37,18 +37,18 @@
       <nav class="nav-list" id="navPrimary"></nav>
     </div>
 
-    <!-- 更多组：折叠，点击展开 -->
+    <!-- 更多组：整组是一个下拉（★ 2026-11-05），内容由 router 渲染进来 -->
     <div class="nav-group">
-      <button class="nav-more-btn" id="navMoreBtn" aria-expanded="false" aria-controls="navSecondary">
-        <span>更多</span>
-        <svg class="chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-      </button>
-      <nav class="nav-list" id="navSecondary" hidden></nav>
+      <nav class="nav-list" id="navSecondary"></nav>
     </div>
 
-    <!-- 常用功能：快捷入口，位于左侧导航下方 -->
+    <!-- 常用功能：按本机使用频率动态排序（★ 2026-11-05） -->
     <div class="nav-group" id="navQuickGroup">
-      <div class="nav-group-title">常用功能</div>
+      <div class="nav-group-title nav-group-title-row">
+        <span>常用功能</span>
+        <button type="button" class="nav-hint" id="quickHint" aria-label="排序说明"
+          title="按本机使用频率排序：进入某个功能就记 1 次（同一页反复刷新不重复计）。记录只存在这台设备的浏览器里，不上传、不跨设备；清空浏览器数据即重置。">?</button>
+      </div>
       <div class="sidebar-quick js-sidebar-quick"></div>
     </div>
 
@@ -120,6 +120,7 @@
 <!-- ================= 脚本：按依赖顺序加载（无模块化，file:// 可直接打开） ================= -->
 <script src="assets/js/config.js"></script>
 <script src="assets/js/utils.js"></script>
+<script src="assets/js/usage.js"></script>
 <script src="assets/js/auth.js"></script>
 <script src="assets/js/components/icons.js"></script>
 <script src="assets/js/dict.js"></script>

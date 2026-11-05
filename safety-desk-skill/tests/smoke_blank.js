@@ -336,16 +336,20 @@ function ok(name, cond, extra) {
     ok('常用组含 概览/待办/隐患/巡检/培训/特种作业',
       ['安全概览', '待办任务', '隐患管理', '安全巡检', '安全培训', '特种作业'].every(k => primary.indexOf(k) >= 0),
       primary.join('/'));
-    ok('特种作业父级与两子菜单都在常用区',
-      !!doc.querySelector('#navPrimary [data-route="special"].has-children') &&
-      !!doc.querySelector('#navPrimary .nav-children [data-route="specPersonnel"]') &&
-      !!doc.querySelector('#navPrimary .nav-children [data-route="specPermit"]'));
+    /* ★ 2026-11-05：特种作业改成下拉，父项是 .nav-drop 的头（带 data-route），三个子项在它自己的 body 里 */
+    ok('特种作业父级与三个子菜单都在常用区',
+      !!doc.querySelector('#navPrimary .nav-drop[data-drop="special"] > .nav-item[data-route="special"]') &&
+      !!doc.querySelector('#navPrimary .nav-drop[data-drop="special"] [data-route="specPersonnel"]') &&
+      !!doc.querySelector('#navPrimary .nav-drop[data-drop="special"] [data-route="devicePersonnel"]') &&
+      !!doc.querySelector('#navPrimary .nav-drop[data-drop="special"] [data-route="specPermit"]'));
     const sec = doc.getElementById('navSecondary');
     const moreNames = Array.from(sec.querySelectorAll('.nav-item .txt')).map(x => x.textContent.trim());
     ok('「更多」组含 数据看板/通知公告/日报/周报',
       ['数据看板', '通知公告', '日报', '周报'].every(k => moreNames.indexOf(k) >= 0), moreNames.join('/'));
-    ok('「更多」组有「报表」小标题',
-      Array.from(sec.querySelectorAll('.nav-sub-title')).some(x => x.textContent.trim() === '报表'));
+    ok('「更多」里的「报表」是下拉（含日报/周报/交接班/考核单）',
+      !!sec.querySelector('.nav-drop[data-drop="reports"]') &&
+      ['dailyReport', 'weeklyReport', 'shiftLog', 'violation'].every(r =>
+        !!sec.querySelector('.nav-drop[data-drop="reports"] [data-route="' + r + '"]')));
   }
 
   /* ---------- 8. 角色权限 ---------- */

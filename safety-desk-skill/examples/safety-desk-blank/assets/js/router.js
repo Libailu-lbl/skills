@@ -92,84 +92,225 @@ SD.router = (function () {
     return false;
   }
 
-  /** 生成单个导航节点（可能带子菜单） */
-  function navItem(r, activeId, counts) {
-    var hasChildren = !!(r.children && r.children.length);
+  /* ---------------- 下拉菜单（★ 2026-11-05） ----------------
+     特种作业 / 更多 / 报表 三处原来分别是「常驻展开的子菜单」「整组折叠」「小分组标题」，
+     三种形态并存、用户要记三套规则。现统一成同一套下拉：
+       · 点击：展开/收起（点开的会「钉住」，鼠标移开也不收）
+       · 悬停：桌面端移入即展开，移开 260ms 后自动收起（触屏设备不绑 hover）
+       · 互斥：同一时间只有一个**并列**下拉展开；父子层级（更多 → 报表）可以同时展开
+       · 图标指示：父项右侧箭头随展开旋转 180°；子树内激活时父项加 .in-tree 高亮
+       · 状态记忆：dropOpen 记住用户显式开合，renderNav 重建 DOM 后按它恢复，
+         不会「点一下筛选就把菜单收回去」；离开时自动按当前页展开所属分支
+     ========================================================= */
+
+  var dropOpen = {};                                  // key → bool（只记用户显式操作过的）
+  var lastActive = null;                              // 上一次渲染时的页面，用于判断「换页了」
+  var SUB_LABEL = { reports: '报表' };
+  var DROP_META = {
+    more:    { name: '更多', icon: 'layers' },
+    reports: { name: '报表', icon: 'daily' }
+  };
+
+  /** 路由（或其子路由）是否等于当前页 */
+  function subtreeHas(r, activeId) {
+    if (!r) return false;
+    if (r.id === activeId) return true;
+    return !!(r.children && r.children.indexOf(activeId) >= 0);
+  }
+
+  /** 节点描述里是否有当前页（用来决定父项高亮与自动展开） */
+  function descHas(desc, activeId) {
+    if (!desc) return false;
+    if (desc.kind === 'route') return subtreeHas(desc.route, activeId);
+    if (subtreeHas(desc.nav, activeId)) return true;
+    return (desc.items || []).some(function (x) { return descHas(x, activeId); });
+  }
+
+  /** 把展开状态刷到 DOM（data-open / aria-expanded / 箭头旋转） */
+  function applyDrop(wrap, on) {
+    wrap.dataset.open = on ? '1' : '0';
+    if (on) wrap.classList.add('open'); else wrap.classList.remove('open');
+    var head = wrap.firstElementChild;
+    if (!head || !head.dataset.dropHead) return;
+    head.setAttribute('aria-expanded', on ? 'true' : 'false');
+    var chev = head.querySelector('.chev');
+    if (chev) { if (on) chev.classList.add('open'); else chev.classList.remove('open'); }
+  }
+
+  /** 这个下拉此刻是否真的看得见（任一祖先下拉收起，它就不可见） */
+  function visibleDrop(d) {
+    var p = d.parentElement;
+    while (p) {
+      if (p.classList && p.classList.contains('nav-drop') && p.dataset.open !== '1') return false;
+      p = p.parentElement;
+    }
+    return true;
+  }
+
+  /** 设置某个下拉的开合；展开时关掉其它**并列**下拉
+      —— 只关「看得见的」那些：父级收起时子级只是被藏起来，状态留着，父级再展开还是原样 */
+  function setDrop(wrap, key, on) {
+    dropOpen[key] = !!on;
+    applyDrop(wrap, on);
+    if (!on) return;
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-drop[data-open="1"]'), function (d) {
+      if (d === wrap || d.contains(wrap) || wrap.contains(d)) return;
+      if (!visibleDrop(d)) return;
+      dropOpen[d.dataset.drop] = false;
+      applyDrop(d, false);
+      d.dataset.pin = '';
+    });
+  }
+
+  /** 单个路由项（叶子节点） */
+  function plainNode(r, activeId, counts) {
     var locked = !!(r.perm && !SD.auth.can(r.perm));
     var cnt = counts && counts[r.id];
-
-    var wrap = U.h('<div class="nav-node"></div>');
-
     var btn = U.h(
-      '<button class="nav-item' +
-        (r.id === activeId ? ' active' : '') +
-        (hasChildren ? ' has-children' : '') +
-        (locked ? ' locked' : '') + '" data-route="' + r.id + '">' +
+      '<button class="nav-item' + (r.id === activeId ? ' active' : '') + (locked ? ' locked' : '') +
+        '" data-route="' + r.id + '">' +
         '<span class="ico">' + SD.icons.get(locked ? 'lock' : r.icon, 18) + '</span>' +
         '<span class="txt">' + U.esc(r.name) + '</span>' +
         (cnt && cnt.n ? '<span class="nav-count ' + (cnt.cls || '') + '" title="' + U.esc(cnt.title || '') + '">' + cnt.n + '</span>' : '') +
-        /* 子菜单常驻展开（不再折叠），所以不画折叠箭头 */
       '</button>'
     );
     btn.addEventListener('click', function () {
       if (locked) { U.toast('无权限访问：' + r.name + '（当前角色不可见）', 'err'); return; }
       go(r.id);
     });
-    wrap.appendChild(btn);
+    return btn;
+  }
 
-    // 父级：渲染子菜单 —— **常驻展开**：特种作业下的特种作业人员 / 特种设备人员 / 危险作业票
-    // 三个入口直接可见（以前只在激活子树内展开，用户看不到「特种设备人员台帐」）
-    if (hasChildren) {
-      var kids = U.h('<div class="nav-children"></div>');
-      r.children.forEach(function (cid) {
-        var c = find(cid);
-        if (c) kids.appendChild(navItem(c, activeId, counts));
+  /**
+   * 下拉父项
+   * @param {object} desc { key, name, icon, nav, items:[{kind:'route',route}|{kind:'drop',...}], count }
+   *   nav 有值 = 这个父项本身也是个页面（特种作业），点开会顺带进落地页
+   */
+  function dropNode(desc, activeId, counts) {
+    var has = descHas(desc, activeId);
+    /* 报表里面是四个高频入口，默认展开；其它下拉只在「当前页在它里面」时自动展开 */
+    var auto = has || desc.key === 'reports';
+    var open = dropOpen[desc.key] == null ? auto : !!dropOpen[desc.key];
+    var locked = !!(desc.nav && desc.nav.perm && !SD.auth.can(desc.nav.perm));
+    var cnt = desc.count;
+
+    var wrap = U.h('<div class="nav-drop" data-drop="' + desc.key + '" data-open="' + (open ? '1' : '0') +
+      '"><div class="nav-children nav-drop-body" id="nd-' + desc.key + '"></div></div>');
+    var body = wrap.querySelector('.nav-drop-body');
+
+    /* 父项本身就是页面时（特种作业），落到该页要像普通项一样显示「选中」 */
+    var isActive = !!(desc.nav && desc.nav.id === activeId);
+    var head = U.h(
+      '<button class="nav-item has-children' + (has ? ' in-tree' : '') + (isActive ? ' active' : '') +
+        (locked ? ' locked' : '') +
+        '" data-drop-head="' + desc.key + '" aria-expanded="' + (open ? 'true' : 'false') + '"' +
+        ' aria-controls="nd-' + desc.key + '"' +
+        (desc.nav ? ' data-route="' + desc.nav.id + '"' : '') + '>' +
+        '<span class="ico">' + SD.icons.get(locked ? 'lock' : desc.icon, 18) + '</span>' +
+        '<span class="txt">' + U.esc(desc.name) + '</span>' +
+        (cnt && cnt.n ? '<span class="nav-count ' + (cnt.cls || '') + '" title="' + U.esc(cnt.title || '') + '">' + cnt.n + '</span>' : '') +
+        '<span class="chev' + (open ? ' open' : '') + '">' + SD.icons.get('chevronD', 14) + '</span>' +
+      '</button>'
+    );
+    wrap.insertBefore(head, body);
+    if (open) wrap.classList.add('open');
+
+    /* 子项：叶子直接渲染，子下拉递归 */
+    (desc.items || []).forEach(function (it) {
+      body.appendChild(it.kind === 'drop' ? dropNode(it, activeId, counts) : plainNode(it.route, activeId, counts));
+    });
+
+    /* ---- 点击：展开/收起。点开 = 钉住（鼠标移开不自动收） ---- */
+    head.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (locked) { U.toast('无权限访问：' + desc.name + '（当前角色不可见）', 'err'); return; }
+      if (wrap.dataset.open === '1') {
+        wrap.dataset.pin = '';
+        setDrop(wrap, desc.key, false);
+        return;
+      }
+      wrap.dataset.pin = '1';
+      setDrop(wrap, desc.key, true);
+      /* 父项自己有落地页（特种作业）且当前不在它的子树里 → 顺手进去；
+         已经在里面就只切展开，免得「想收起菜单却被弹回落地页」 */
+      if (desc.nav && !subtreeHas(desc.nav, activeId)) go(desc.nav.id);
+    });
+
+    /* ---- 悬停：桌面端移入展开、移开自动收（触屏不绑，避免点一次又立刻收起） ---- */
+    var touch = !!(window.matchMedia && window.matchMedia('(hover: none)').matches);
+    if (!touch) {
+      wrap.addEventListener('mouseenter', function () {
+        wrap.dataset.hover = '1';
+        if (wrap.dataset.open !== '1') setDrop(wrap, desc.key, true);
       });
-      wrap.appendChild(kids);
+      wrap.addEventListener('mouseleave', function () {
+        wrap.dataset.hover = '0';
+        if (wrap.dataset.pin === '1') return;      // 点开的保持
+        window.setTimeout(function () {
+          if (wrap.dataset.hover === '1' || wrap.dataset.pin === '1') return;
+          if (wrap.dataset.open === '1') setDrop(wrap, desc.key, false);
+        }, 260);
+      });
     }
     return wrap;
   }
 
-  /** 更多组内的小分组标题（如「报表」） */
-  var SUB_LABEL = { reports: '报表' };
-
-  /**
-   * 渲染一组导航
-   * @param {HTMLElement} container
-   * @param {string} groupName  primary / secondary / special
-   * @param {string} activeId
-   * @param {object} counts {routeId: {n, cls, title}}
-   * 组内可带 subGroup（小分组）：先渲染普通项，再按 subGroup 分段加小标题渲染
-   */
-  function renderGroup(container, groupName, activeId, counts) {
-    if (!container) return;
-    U.clear(container);
-    var items = ROUTES.filter(function (r) { return r.group === groupName && !r.parent; });
-    // 普通项（无 subGroup）
-    items.filter(function (r) { return !r.subGroup; })
-      .forEach(function (r) { container.appendChild(navItem(r, activeId, counts)); });
-    // 小分组：按出现顺序逐段加小标题
-    var subs = [];
-    items.forEach(function (r) {
-      if (r.subGroup && subs.indexOf(r.subGroup) < 0) subs.push(r.subGroup);
-    });
-    subs.forEach(function (sg) {
-      container.appendChild(U.h('<div class="nav-sub-title">' + U.esc(SUB_LABEL[sg] || sg) + '</div>'));
-      items.filter(function (r) { return r.subGroup === sg; })
-        .forEach(function (r) { container.appendChild(navItem(r, activeId, counts)); });
-    });
-  }
-
   /**
    * 渲染导航
-   * @param {object} els   {primary, secondary, special, tabbar}
+   * @param {object} els   {primary, secondary, tabbar}
    * @param {string} activeId
    * @param {object} counts {routeId: {n, cls, title}}
    */
   function renderNav(els, activeId, counts) {
     counts = counts || {};
-    renderGroup(els.primary, 'primary', activeId, counts);
-    renderGroup(els.secondary, 'secondary', activeId, counts);
+
+    /* 换页就把「手动开合」清零，回到「按当前页自动展开所属分支」的默认。
+       这样做的好处：① 从别的页跳进来，所属分支一定是展开的，不会因为上次手动收起而看不见；
+       ② 同一页里点筛选、改数据触发的重绘（activeId 没变）仍保留刚刚的手动开合。 */
+    if (lastActive !== activeId) {
+      dropOpen = {};
+      lastActive = activeId;
+    }
+
+    /* 常用组：普通项 + 「特种作业」下拉 */
+    if (els.primary) {
+      U.clear(els.primary);
+      ROUTES.filter(function (r) { return r.group === 'primary' && !r.parent; })
+        .forEach(function (r) {
+          if (!r.children) { els.primary.appendChild(plainNode(r, activeId, counts)); return; }
+          els.primary.appendChild(dropNode({
+            kind: 'drop', key: r.id, name: r.name, icon: r.icon, nav: r,
+            items: r.children.map(function (cid) {
+              var c = find(cid);
+              return c ? { kind: 'route', route: c } : null;
+            }).filter(Boolean),
+            count: counts[r.id]
+          }, activeId, counts));
+        });
+    }
+
+    /* 更多组：整组一个下拉，里面是 数据看板 / 通知公告 + 「报表」下拉 */
+    if (els.secondary) {
+      U.clear(els.secondary);
+      var sec = ROUTES.filter(function (r) { return r.group === 'secondary' && !r.parent; });
+      var items = sec.filter(function (r) { return !r.subGroup; })
+        .map(function (r) { return { kind: 'route', route: r }; });
+
+      var subs = [];
+      sec.forEach(function (r) { if (r.subGroup && subs.indexOf(r.subGroup) < 0) subs.push(r.subGroup); });
+      subs.forEach(function (sg) {
+        var meta = DROP_META[sg] || { name: SUB_LABEL[sg] || sg, icon: 'file' };
+        items.push({
+          kind: 'drop', key: sg, name: meta.name, icon: meta.icon, nav: null,
+          items: sec.filter(function (r) { return r.subGroup === sg; })
+                    .map(function (r) { return { kind: 'route', route: r }; })
+        });
+      });
+
+      els.secondary.appendChild(dropNode({
+        kind: 'drop', key: 'more', name: DROP_META.more.name, icon: DROP_META.more.icon, nav: null, items: items
+      }, activeId, counts));
+    }
 
     // 手机底部 Tab：常用 3 项 + 更多 2 项（看板/通知）+ 特种作业，共 6 项
     if (els.tabbar) {
@@ -186,30 +327,20 @@ SD.router = (function () {
         els.tabbar.appendChild(t);
       });
     }
-
-    // 「更多」展开状态：当前页在更多组里时强制展开；否则保留用户手动开合的状态
-    // （否则在常用页展开「更多」后，一次筛选刷新就把它收回了）
-    var btn = document.getElementById('navMoreBtn');
-    var sec = document.getElementById('navSecondary');
-    if (btn && sec) {
-      var inSecondary = !!find(activeId) && find(activeId).group === 'secondary';
-      var open = inSecondary || sec.dataset.userOpen === '1';
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-      sec.hidden = !open;
-    }
   }
 
-  /** 绑定「更多」折叠按钮（只绑一次） */
+  /** 全局只绑一次：Esc 收起所有下拉（键盘用户的出口） */
+  var dropBound = false;
   function bindMore() {
-    var btn = document.getElementById('navMoreBtn');
-    var sec = document.getElementById('navSecondary');
-    if (!btn || !sec || btn.dataset.bound === '1') return;
-    btn.dataset.bound = '1';
-    btn.addEventListener('click', function () {
-      var open = btn.getAttribute('aria-expanded') === 'true';
-      btn.setAttribute('aria-expanded', open ? 'false' : 'true');
-      sec.hidden = open;
-      sec.dataset.userOpen = open ? '0' : '1';   // 记住手动开合意图，刷新不收回
+    if (dropBound) return;
+    dropBound = true;
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      Array.prototype.forEach.call(document.querySelectorAll('.nav-drop[data-open="1"]'), function (d) {
+        dropOpen[d.dataset.drop] = false;
+        applyDrop(d, false);
+        d.dataset.pin = '';
+      });
     });
   }
 

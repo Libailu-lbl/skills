@@ -82,7 +82,8 @@ assets/js/
 ├── dataSource.js          数据访问（mock/real 切换，CRUD 统一形状）
 ├── metrics.js             计算层：汇总、趋势、预警、待办合并
 ├── report.js              日报/周报聚合（纯函数）
-├── router.js              hash 路由 + 导航渲染
+├── usage.js               功能使用频率（计数 / 排序 / 本机持久化）
+├── router.js              hash 路由 + 导航渲染（三处下拉菜单）
 ├── app.js                 ★ 装配层：refreshAll / 交互 / 空闲锁
 ├── brandLogo.js           打印件与 Excel 用的公司标识（base64）
 ├── components/
@@ -170,8 +171,11 @@ compute() 算指标 → renderNav() → renderView() → syncRole()
   children:[{ id:'specPersonnel', name:'特种作业人员' }, …] }
 ```
 
-- `group: primary` → 左侧「常用」常驻；`secondary` → 收进「更多」
-- `subGroup: 'reports'` → 在「更多」里再分一个「报表」小组
+- `group: primary` → 左侧「常用」常驻；`secondary` → 收进「更多」（下拉）
+- `subGroup: 'reports'` → 在「更多」里再分一个「报表」下拉（★ 2026-11-05 起由小标题改为下拉）
+- 三处下拉共用同一套：点击/悬停展开、同级互斥、`.in-tree` 高亮、`aria-expanded` + 箭头旋转
+- 「常用功能」顺序来自 `SD.usage.rank()`：按使用次数降序 → 最近使用 → 内置顺序，
+  数据存本机 `localStorage.sd_usage_v1`（只在本设备生效）
 - `perm` → 无权限时导航显示锁 + 点进去渲染「无权限」占位页（**门禁在 app.refreshAll 里统一做**，不在每个 view 里判断）
 
 ---

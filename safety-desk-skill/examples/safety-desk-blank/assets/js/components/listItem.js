@@ -122,7 +122,7 @@ SD.comp.listItem = (function () {
   /** 常用功能快捷入口 */
   function quick(cfg) {
     var el = U.h(
-      '<button class="quick">' +
+      '<button class="quick"' + (cfg.title ? ' title="' + U.esc(cfg.title) + '"' : '') + '>' +
         '<span class="qi">' + SD.icons.get(cfg.icon || 'external', 18) + '</span>' +
         '<span class="qt">' + U.esc(cfg.text) + '</span>' +
       '</button>'

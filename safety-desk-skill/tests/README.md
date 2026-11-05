@@ -27,11 +27,12 @@ node tests/smoke_shift.js http://127.0.0.1:8124/index.html    # 终端 B
 
 ## 套件清单
 
-### 可运行示例（`examples/safety-desk-blank`，共 931 项 / 14 套）
+### 可运行示例（`examples/safety-desk-blank`，共 986 项 / 15 套）
 
 | 套件 | 项数 | 覆盖 |
 |---|---|---|
 | `smoke_blank.js` | 136 | 空白版首屏：空态、导航、登记第一条、持久化、无 JS 报错 |
+| `smoke_nav.js` | 55 | 导航下拉：特种作业/更多/报表三处、点击与悬停展开、同级互斥、箭头与 aria、子树高亮、换页自动展开、同页保留；常用功能按使用次数重排与本机持久化 |
 | `smoke_permitcode.js` | 52 | 作业票动态编号：拼音字表、八类前缀、各前缀独立顺延、撞车兜底、跨类型提示 |
 | `smoke_device.js` | 44 | 特种设备人员台账：日期规范化、搜索筛选排序、编号顺延 |
 | `smoke_excelio.js` | 89 | 台账 Excel 导入导出：模板、别名映射、逐行校验、追加/覆盖 |

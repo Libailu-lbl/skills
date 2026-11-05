@@ -6,7 +6,7 @@ description: 搭建「离线优先的个人业务工作台」HTML 应用的完�
 # 安全员工作台 · 搭建 SKILL
 
 > 一个「双击 index.html 就能用、断网不崩、能打印能导出、别人克隆就能改」的业务工作台，是怎么一步步做出来的。
-> 本 SKILL 提炼自一套 52 个 JS 文件、931 项自检全绿的实际项目（`examples/safety-desk-blank`）。
+> 本 SKILL 提炼自一套 53 个 JS 文件、986 项自检全绿的实际项目（`examples/safety-desk-blank`）。
 
 ---
 
@@ -118,7 +118,8 @@ assets/js/
 ├── code.js            单据编号规则
 ├── dataSource.js      数据访问层（mock / real 可切换）
 ├── metrics.js         计算层（纯函数，只读数据）
-├── router.js          路由 + 导航
+├── usage.js           功能使用频率（常用功能按它排序；本机 localStorage）
+├── router.js          路由 + 导航（特种作业 / 更多 / 报表 三处下拉）
 ├── app.js             装配层（refreshAll 唯一入口）
 ├── components/        通用控件（弹窗/表格/图表/导出器…）
 ├── data/              静态种子数据
@@ -335,7 +336,7 @@ python scripts/compare_xlsx.py 原表.xlsx 导出件.xlsx
 | `references/testing.md` | jsdom 自检 + 真打印取证的写法与坑 |
 | `references/pitfalls.md` | **20 条实测踩坑**（先看这个，能省两天） |
 | `assets/skeleton/` | 可运行的最小骨架（19 项自检全绿） |
-| `examples/safety-desk-blank/` | 可运行示例：52 个 JS、10 个模块、931 项自检（无示例数据） |
+| `examples/safety-desk-blank/` | 可运行示例：53 个 JS、10 个模块、986 项自检（无示例数据） |
 
 ---
 
