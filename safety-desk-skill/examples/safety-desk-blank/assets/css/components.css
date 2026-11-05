@@ -548,6 +548,10 @@ table.tbl tr.row-warn td:first-child{ box-shadow:inset 3px 0 0 var(--lv-large); 
 .thumb-lg{ width:104px; height:78px; }
 .thumb-more{ font-size:12px; color:var(--text-3,#94a3b8); }
 .tags .tag{ margin-right:2px; }
+/* 多标签并排（考核情况的处罚 / 保证书 / 其它）：只加在需要的列上，
+   不动全局 .tags —— 作业票那列还在用 inline 流，改了会连带变样 */
+.tags-gap{ display:flex; flex-wrap:wrap; gap:4px; }
+.tags-gap .tag{ margin-right:0; }
 
 .pg-item{ padding:12px 0; border-top:1px dashed var(--border,#e2e8f0); }
 .pg-item:first-child{ border-top:none; padding-top:2px; }

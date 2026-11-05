@@ -43,7 +43,7 @@ SD.views.violation = (function () {
   function assessHtml(v) {
     var a = assessOf(v);
     if (!a.picks.length) return '<span class="t-3">—</span>';
-    return '<div class="tags">' + a.picks.map(function (p) {
+    return '<div class="tags tags-gap">' + a.picks.map(function (p) {
       var txt = (p === OTHER_OPT && a.other) ? (p + '：' + a.other) : p;
       var cls = p === '处罚' ? 'b-danger' : (p === '保证书' ? 'b-info' : 'b-mute');
       var short = txt.length > 16 ? txt.slice(0, 16) + '…' : txt;
