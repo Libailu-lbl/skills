@@ -4,7 +4,7 @@
    覆盖：
      ① 结构：特种作业 / 报表 / 更多三处都是下拉，都带箭头与 aria-expanded；
         「报表」与「更多」并列同级、排在「更多」之前（2026-11-05 从「更多」里提出）
-     ② 初始状态：只有「报表」默认展开（其它两个按当前页决定）
+     ② 初始状态：三个下拉**全部默认收起**，进入所属页面时才自动展开
      ③ 点击展开 / 收起，父项自己有页面时顺带进入
      ④ 互斥：同一时间只有一个并列下拉展开；父子层级可同时展开
      ⑤ 悬停不触发任何开合（2026-11-05 取消悬停展开），只有点击才展开/收起
@@ -108,8 +108,10 @@ function ok(name, cond, extra) {
   console.log('== 2. 初始展开状态 ==');
   ok('概览页：「特种作业」收起', !isOpen('special'), aria('special'));
   ok('概览页：「更多」收起', !isOpen('more'), aria('more'));
-  ok('「报表」默认展开（四个报表入口直接可见）', isOpen('reports'), aria('reports'));
-  ok('箭头随状态：展开的报表箭头是旋转态', chevOpen('reports') === true);
+  ok('「报表」默认收起（★ 2026-11-05 晚改：不再默认摊开）', !isOpen('reports'), aria('reports'));
+  ok('概览页：三个下拉全部收起', !isOpen('special') && !isOpen('more') && !isOpen('reports'),
+    'special=' + isOpen('special') + ' more=' + isOpen('more') + ' reports=' + isOpen('reports'));
+  ok('箭头随状态：收起的报表箭头是原始态', chevOpen('reports') === false);
   ok('箭头随状态：收起的特种作业箭头是原始态', chevOpen('special') === false);
 
   /* ================= 3. 点击展开 / 收起 ================= */
@@ -126,10 +128,11 @@ function ok(name, cond, extra) {
   console.log('== 4. 同一时间只有一个并列下拉展开 ==');
   await click(headOf('special'));
   ok('先展开「特种作业」', isOpen('special'));
+  await click(headOf('reports'));
+  ok('再展开「报表」时，「特种作业」自动收起', !isOpen('special') && isOpen('reports'),
+    'special=' + isOpen('special') + ' reports=' + isOpen('reports'));
   await click(headOf('more'));
-  ok('再展开「更多」时，「特种作业」自动收起', !isOpen('special') && isOpen('more'),
-    'special=' + isOpen('special') + ' more=' + isOpen('more'));
-  ok('展开「更多」会收起「报表」（两者并列互斥）', !isOpen('reports') && isOpen('more'),
+  ok('展开「更多」时，「报表」自动收起（三者同层互斥）', !isOpen('reports') && isOpen('more'),
     'reports=' + isOpen('reports') + ' more=' + isOpen('more'));
 
   /* ================= 5. 悬停不触发开合（★ 2026-11-05 取消悬停展开） ================= */
@@ -165,7 +168,6 @@ function ok(name, cond, extra) {
 
   await goHash('#/specPermit');
   ok('进危险作业票：「特种作业」展开', isOpen('special'));
-  /* 报表是「默认展开」的（四个报表入口直接可见），所以切到别的页它仍开着，这里不要求它收起 */
   ok('「特种作业」父项高亮 in-tree', inTree('special'));
   ok('危险作业票子项高亮', activeSub() === 'specPermit', activeSub());
   ok('此时「更多」已收起（离开该分支）', !isOpen('more'), aria('more'));
@@ -173,7 +175,7 @@ function ok(name, cond, extra) {
   /* ================= 7. 同页保留 / 换页复原 ================= */
   console.log('== 7. 同页重绘保留手动开合 ==');
   await goHash('#/hazard');
-  ok('进隐患页：两个下拉都收起', !isOpen('special') && !isOpen('more'));
+  ok('进隐患页：三个下拉都收起', !isOpen('special') && !isOpen('more') && !isOpen('reports'));
   await click(headOf('more'));
   ok('手动展开「更多」', isOpen('more'));
   SD.app.refreshAll();                          // 模拟「点筛选 / 改数据」触发的重绘
@@ -183,14 +185,23 @@ function ok(name, cond, extra) {
   await goHash('#/overview');
   ok('换页后回到默认： 「更多」收起', !isOpen('more'), aria('more'));
 
+  /* 报表：只有进它自己的页面才自动展开，离开即收起 */
+  await goHash('#/shiftLog');
+  ok('进报表类页面（交接班）：「报表」自动展开', isOpen('reports'), aria('reports'));
+  ok('此时「更多」仍收起（只在所属分支展开）', !isOpen('more'));
+  await goHash('#/overview');
+  ok('离开报表页回到概览：「报表」又回到收起', !isOpen('reports'), aria('reports'));
+  ok('概览页手动点开「报表」也能用', (await click(headOf('reports')), isOpen('reports')));
+  await click(headOf('reports'));               // 复原，不影响后面的用例
+
   /* ================= 8. Esc ================= */
   console.log('== 8. Esc 收起 ==');
-  await click(headOf('more'));
-  ok('先展开「更多」', isOpen('more'));
+  await click(headOf('reports'));
+  ok('先展开「报表」', isOpen('reports'));
   doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await wait(200);
-  ok('按 Esc 收起全部下拉', !isOpen('more') && !isOpen('reports'),
-    'more=' + isOpen('more') + ' reports=' + isOpen('reports'));
+  ok('按 Esc 收起展开中的下拉', !isOpen('reports') && !isOpen('more'),
+    'reports=' + isOpen('reports') + ' more=' + isOpen('more'));
 
   /* ================= 9. 常用功能按频率排序 ================= */
   console.log('== 9. 常用功能：按使用频率排序 ==');

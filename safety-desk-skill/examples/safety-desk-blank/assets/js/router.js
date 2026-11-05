@@ -187,8 +187,9 @@ SD.router = (function () {
    */
   function dropNode(desc, activeId, counts) {
     var has = descHas(desc, activeId);
-    /* 报表里面是四个高频入口，默认展开；其它下拉只在「当前页在它里面」时自动展开 */
-    var auto = has || desc.key === 'reports';
+    /* 三个下拉**一律默认收起**，只在「当前页就在它里面」时自动展开
+       （★ 2026-11-05 晚：报表不再默认摊开，首屏更短；进日报/周报/交接班/考核单时它自己展开） */
+    var auto = has;
     var open = dropOpen[desc.key] == null ? auto : !!dropOpen[desc.key];
     var locked = !!(desc.nav && desc.nav.perm && !SD.auth.can(desc.nav.perm));
     var cnt = desc.count;
