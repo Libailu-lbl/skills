@@ -603,6 +603,9 @@ base64 解成 PNG 嵌进 `xl/media/image1.png` + `xl/drawings/drawing1.xml`（on
 | `dept` | string | 是 | 部门 |
 | `leader` | string | 是 | 部门负责人 |
 | `content` | string | 是 | 违章内容（时间 / 地点 / 具体行为 / 违反的规定） |
+| `assessment` | object | 否 | **考核情况**（★ 2026-11-05）：`{ picks: ['处罚','保证书','其它'], other: '口头教育' }`。
+`picks` 可多选，取值限于 处罚 / 保证书 / 其它；`other` 是勾「其它」时的手写说明，**与 picks 分开存**，
+避免把「其它」里写的内容当成新选项。勾了「其它」却没写说明，保存时会被拒 |
 | `photos` | string[] | 否 | 现场照片 dataURL，最多 6 张，上传时压到宽 1000px；列表点编号看大图 |
 | `remark` | string | 否 | 备注（处理跟进、整改情况等） |
 | `createdAt` / `updatedAt` | string | 否 | `YYYY-MM-DD HH:mm`，前端写入 |
@@ -612,6 +615,10 @@ base64 解成 PNG 嵌进 `xl/media/image1.png` + `xl/drawings/drawing1.xml`（on
 
 **列表**：默认展示**今年全年**（`date` 落在今年 01-01 ~ 12-31），可切年份、也可自定起止日期；
 年份 / 区间只是视图过滤，不改数据、不影响接口。
+
+**考核情况的展示**：列表「考核情况」列按 `picks` 逐项渲染成小标签（处罚 = 红、保证书 = 蓝、其它 = 灰），
+勾了「其它」时标签写成「其它：口头教育」。搜索框会一并匹配标签文本与 `other` 里的说明，
+所以搜「保证书」或「停工培训」都能找到这一条。
 
 ## 10. 权限控制（auth.js，可选对接后端）
 

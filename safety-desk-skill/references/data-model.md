@@ -118,6 +118,7 @@
   employee:'王志强', empNo:'MJ1023',
   dept:'发泡车间', leader:'孙浩',  // 部门 + 部门负责人
   content:'未按规定佩戴安全帽…',   // 违章内容
+  assessment:{ picks:['处罚','其它'], other:'口头教育 + 停工培训半天' },  // 考核情况：可多选，other 存「其它」的手写说明
   photos:['data:image…'],        // 现场照片，≤6 张；列表点「编号」看大图
   remark:'', createdAt, updatedAt }
 ```

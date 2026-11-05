@@ -27,7 +27,7 @@ node tests/smoke_shift.js http://127.0.0.1:8124/index.html    # 终端 B
 
 ## 套件清单
 
-### 可运行示例（`examples/safety-desk-blank`，共 907 项 / 14 套）
+### 可运行示例（`examples/safety-desk-blank`，共 931 项 / 14 套）
 
 | 套件 | 项数 | 覆盖 |
 |---|---|---|
@@ -44,7 +44,7 @@ node tests/smoke_shift.js http://127.0.0.1:8124/index.html    # 终端 B
 | `smoke_vault.js` | 29 | 不压缩 + IndexedDB 外置 + 上传护栏 |
 | `smoke_monthview.js` | 42 | 作业票月视图 + 巡查照片上限 18 张 |
 | `smoke_yearview.js` | 47 | 隐患 / 巡检 / 培训 / 通知「默认当年 + 年份下拉」 |
-| `smoke_violation.js` | 52 | 安全违章考核单：编号 FZKH-001、默认全年、点编号看照片、增改删、受限拦截 |
+| `smoke_violation.js` | 76 | 安全违章考核单：编号 FZKH-001、默认全年、点编号看照片、**考核情况多选 + 其它手填**、增改删、受限拦截 |
 
 > 原先只跑「示例数据版」的 11 套（smoke / smoke_code / smoke_crud / smoke_ops / smoke_photos /
 > smoke_print / smoke_reports / smoke_settings / smoke_special / smoke_training / smoke_trend）

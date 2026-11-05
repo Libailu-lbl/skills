@@ -9,6 +9,7 @@
      ⑤ 时间范围筛选：收窄区间条数变少、「全年」按钮出现并可复原
      ⑥ 切年份 → 区间重置为该年全年
      ⑦ 新增 / 编辑 / 删除：字段落库、照片数组保留、删完回列表
+     ⑦.5 考核情况：处罚 / 保证书 / 其它多选、勾「其它」后手填、校验与列表标签、搜索命中
      ⑧ 受限模式：新增按钮被拦（不落库）
      ⑨ 编号中枢：rule/next/padSeq 与其它八类互不干扰
 */
@@ -307,6 +308,142 @@ function skip(name, why) { console.log('  -- 跳过 ' + name + '（' + why + '�
     ok('删除后数据 -1', store().length === before, store().length + ' / ' + before);
     ok('删除后列表里没有它', codes().indexOf('FZKH-099') < 0);
   }
+
+  /* ================= 7.5 考核情况：多选 + 「其它」手填 ================= */
+  console.log('== 7.5 考核情况（处罚 / 保证书 / 其它）==');
+  const n1 = store().length;
+  const addB2 = Array.from(doc.querySelectorAll('#view button')).filter(b => /新增考核单/.test(b.textContent))[0];
+  addB2.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  await waitSel('.mask', 4000);
+  const m2 = doc.querySelector('.mask');
+  ok('打开新增弹窗（考核情况用例）', !!m2);
+  /* dialog 打开 30ms 后会把焦点放到第一个字段，等它做完再测「勾其它→补充框聚焦」 */
+  await wait(180);
+
+  const grp = m2.querySelector('#ff_assessment');
+  ok('表单里有「考核情况」字段', !!grp);
+  const boxes = () => Array.from(m2.querySelectorAll('#ff_assessment input[type="checkbox"]'));
+  ok('三个选项：处罚 / 保证书 / 其它',
+    boxes().map(b => b.value).join(',') === '处罚,保证书,其它', boxes().map(b => b.value).join(','));
+  const otherIn = () => m2.querySelector('#ff_assessment .chk-other');
+  ok('未勾「其它」时补充框隐藏', !!otherIn() && otherIn().hidden === true, otherIn() && otherIn().hidden);
+  ok('补充框有占位提示', /勾「其它」后/.test((otherIn() || {}).placeholder || ''), otherIn() && otherIn().placeholder);
+
+  const tick = (val, on) => {
+    const b = boxes().filter(x => x.value === val)[0];
+    b.checked = on;
+    b.dispatchEvent(new win.Event('change', { bubbles: true }));
+  };
+
+  tick('其它', true);
+  /* jsdom 不实现真实的焦点管理（弹窗里所有元素都聚焦不上，dialog 自带的自动聚焦同样无效），
+     所以这里只验「显示出来」；勾选后自动聚焦到补充框只在真实浏览器里生效 */
+  ok('勾「其它」后补充框显示出来', otherIn().hidden === false, 'hidden=' + otherIn().hidden);
+  otherIn().value = '临时写一半';
+  tick('其它', false);
+  ok('取消勾选「其它」→ 补充框隐藏且清空', otherIn().hidden === true && otherIn().value === '',
+    'hidden=' + otherIn().hidden + ' value=' + JSON.stringify(otherIn().value));
+
+  /* 只写字不勾（真实浏览器做不到，这里验证兜底：内容不会被静默丢掉） */
+  otherIn().value = '只写字没勾';
+  otherIn().dispatchEvent(new win.Event('input', { bubbles: true }));
+  ok('补充框一有字就自动勾上「其它」', boxes().filter(b => b.value === '其它')[0].checked === true);
+  otherIn().value = '';
+  otherIn().dispatchEvent(new win.Event('input', { bubbles: true }));
+
+  const setF2 = (id, v) => {
+    const e = m2.querySelector('#' + id);
+    if (!e) return;
+    e.value = v;
+    e.dispatchEvent(new win.Event('input', { bubbles: true }));
+    e.dispatchEvent(new win.Event('change', { bubbles: true }));
+  };
+  setF2('ff_code', 'FZKH-098');
+  setF2('ff_date', TODAY);
+  setF2('ff_applicant', '考核情况申请人');
+  setF2('ff_employee', '考核情况员工');
+  setF2('ff_empNo', 'MJ9098');
+  setF2('ff_dept', '测试车间');
+  setF2('ff_leader', '测试负责人');
+  setF2('ff_content', '自检用：验证考核情况字段。');
+
+  tick('处罚', true);
+  tick('保证书', true);
+  tick('其它', true);
+  ok('可多选（三项同时勾上）', boxes().filter(b => b.checked).length === 3,
+    boxes().filter(b => b.checked).map(b => b.value).join(','));
+
+  m2.querySelector('.js-ok').dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  await wait(800);
+  ok('勾了「其它」却没写字 → 保存被拦', !!doc.querySelector('.mask'));
+  ok('提示写明要补内容', /勾选了「其它」/.test((doc.querySelector('.mask') || {}).textContent || ''),
+    (((doc.querySelector('.mask') || {}).textContent || '').match(/「考核情况」[^。]*/) || [''])[0]);
+
+  m2.querySelector('#ff_assessment .chk-other').value = '口头教育 + 停工培训半天';
+  m2.querySelector('#ff_assessment .chk-other').dispatchEvent(new win.Event('input', { bubbles: true }));
+  m2.querySelector('.js-ok').dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  await wait(1900);
+  ok('补齐说明后保存成功', !doc.querySelector('.mask'));
+
+  const v2 = store().filter(r => r.code === 'FZKH-098')[0];
+  ok('落库为 {picks, other}（不混在一起）',
+    !!v2 && v2.assessment && v2.assessment.picks.join(',') === '处罚,保证书,其它' &&
+    v2.assessment.other === '口头教育 + 停工培训半天',
+    v2 && JSON.stringify(v2.assessment));
+
+  const heads = Array.from(doc.querySelectorAll('#view .js-vk-body table thead th')).map(t => t.textContent.trim());
+  ok('列表新增「考核情况」列', heads.indexOf('考核情况') >= 0, heads.join(' | '));
+  const tr = Array.from(doc.querySelectorAll('#view .js-vk-body table tbody tr'))
+    .filter(t => /FZKH-098/.test(t.textContent))[0];
+  ok('行内并列显示各选项（处罚 / 保证书 / 其它：…）',
+    !!tr && /处罚/.test(tr.textContent) && /保证书/.test(tr.textContent) && /其它：口头教育/.test(tr.textContent),
+    tr && tr.textContent.replace(/\s+/g, ' ').slice(0, 130));
+
+  const qIn = doc.querySelector('#view input[placeholder*="搜编号"]');
+  const search = async kw => { qIn.value = kw; qIn.dispatchEvent(new win.Event('input', { bubbles: true })); await wait(520); };
+  await search('保证书');
+  ok('搜索能按考核情况命中', codes().indexOf('FZKH-098') >= 0, codes().join(','));
+  await search('停工培训');
+  ok('搜索能命中「其它」里手写的说明', codes().indexOf('FZKH-098') >= 0, codes().join(','));
+  await search('');
+  await wait(200);
+
+  /* 编辑回显 + 改选 */
+  const opsBtn = doc.querySelector('[data-act="vops"][data-id="' + (v2 && v2.id) + '"]');
+  ok('找到该行的「操作 ▾」', !!opsBtn);
+  if (opsBtn) {
+    opsBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    await wait(350);
+    const editItem = Array.from(doc.querySelectorAll('.dd-menu button')).filter(b => /编辑/.test(b.textContent))[0];
+    ok('下拉里有「编辑」', !!editItem);
+    editItem.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    await waitSel('.mask', 4000);
+    const m3 = doc.querySelector('.mask');
+    const boxes3 = Array.from(m3.querySelectorAll('#ff_assessment input[type="checkbox"]'));
+    ok('编辑回显：三项都勾上', boxes3.filter(b => b.checked).length === 3,
+      boxes3.map(b => b.value + ':' + b.checked).join(','));
+    ok('编辑回显：补充说明带回原文', m3.querySelector('.chk-other').value === '口头教育 + 停工培训半天',
+      m3.querySelector('.chk-other').value);
+    ok('编辑回显：补充框可见', m3.querySelector('.chk-other').hidden === false);
+
+    const b3 = boxes3.filter(b => b.value === '保证书')[0];
+    b3.checked = false;
+    b3.dispatchEvent(new win.Event('change', { bubbles: true }));
+    m3.querySelector('.js-ok').dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    await wait(1900);
+    const v3 = store().filter(r => r.id === (v2 && v2.id))[0];
+    ok('改选后 picks 少了「保证书」、other 原样保留',
+      !!v3 && v3.assessment.picks.join(',') === '处罚,其它' &&
+      v3.assessment.other === '口头教育 + 停工培训半天',
+      v3 && JSON.stringify(v3.assessment));
+  }
+
+  /* 清理 */
+  if (v2) { await SD.api.removeViolation(v2.id); }
+  await SD.app.reload();
+  await wait(800);
+  await go('violation');
+  ok('清理后数据回到 ' + n1 + ' 条', store().length === n1, store().length);
 
   /* ================= 8. 受限模式拦截 ================= */
   console.log('== 8. 受限模式 ==');

@@ -10,9 +10,9 @@
      {
        name      : string   必填，取值键名
        label     : string   显示名
-       type      : text | textarea | date | number | select | switch | photos | people | code
-       options   : array    select 用，['A','B'] 或 [{v,n}]
-       required  : bool     必填（空值拦截；photos 用「至少一张」判定）
+       type      : text | textarea | date | number | select | switch | photos | people | code | checks
+       options   : array    select / checks 用，['A','B'] 或 [{v,n}]
+       required  : bool     必填（空值拦截；photos 用「至少一张」判定；checks 用「至少勾一项」）
        full      : bool     独占一行（默认两列布局；photos / people 建议给 full）
        def       : any|fn   默认值（函数则在打开时求值）
        max       : number   photos 最多张数（默认 3）/ people 最多人数（默认 8）
@@ -39,6 +39,15 @@
      · 校验     : 内置走 SD.code.check —— 空 / 格式 / 同类重复（作业票额外查
                   「前缀是不是别的作业类型的号」）三类错误
      规则表在 config.js 的 SD.CONFIG.codeRules，改前缀改位数只改那一处。
+
+   checks 类型说明（多选 + 「其它」手填，2026-11-05 起用于考核单的「考核情况」）：
+     · options     : 选项数组，如 ['处罚','保证书','其它']
+     · otherText   : 哪个选项算「其它」，勾上它才显示补充输入框（默认 '其它'）
+     · otherPlaceholder : 补充输入框的占位文案
+     · 取值         : { picks: ['处罚','其它'], other: '口头教育 + 停工培训半天' }
+                     —— picks 与 other 分开存，「其它」的具体内容不会被误当成选项
+     · 两个约定：① 补充框里写了字但没勾「其它」，保存时自动补上「其它」（不丢内容）；
+                 ② 勾了「其它」却一个字没写，校验会拦一下，避免出现「其它：空」
 
    用法：
      SD.comp.formDialog.open({
@@ -100,6 +109,25 @@ SD.comp.formDialog = (function () {
     if (field.type === 'people') {
       return '<div class="pp-slot" id="' + id + '" data-max="' + (field.max || 8) + '"></div>';
     }
+    if (field.type === 'checks') {
+      /* 多选 + 「其它」手填：勾选项与补充说明分开存（{picks, other}）。
+         外层 field 是 div（见 buildBody），所以这里可以放心用 <label> 包每个选项。 */
+      var co = normOptions(field.options);
+      var otName = field.otherText || '其它';
+      var cur = (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+      var picks = Array.isArray(cur.picks) ? cur.picks.map(String) : [];
+      return '<div class="chk-group" id="' + id + '">' + co.map(function (o) {
+        var on = picks.indexOf(String(o.v)) >= 0;
+        var isOther = String(o.v) === otName;
+        return '<label class="chk"><input type="checkbox" value="' + U.esc(o.v) + '"' +
+            (on ? ' checked' : '') + '><span>' + U.esc(o.n) + '</span></label>' +
+          (isOther
+            ? '<input class="input chk-other" type="text" value="' + U.esc(cur.other || '') + '"' +
+              ' placeholder="' + U.esc(field.otherPlaceholder || '请补充具体考核方式') + '"' +
+              (on ? '' : ' hidden') + ro + '>'
+            : '');
+      }).join('') + '</div>';
+    }
     if (field.type === 'code') {
       // 编号：输入框预填下一个可用编号（SD.code.next），用户可手动修改
       var ty2 = field.codeType || field.name;
@@ -123,12 +151,50 @@ SD.comp.formDialog = (function () {
       var help = f.help ? '<div class="t-3 t-sm" style="margin-top:4px">' + U.esc(f.help) + '</div>' : '';
       // photos / people 控件内部有按钮和 input，放进 <label> 会被当成 labelable 控件，
       // 点空白处会误触发「添加」，所以这两项改用 div 包；
-      // code 同理（曾是「输入框 + 默认按钮」组合，按钮放进 label 点按钮会连带触发 label 行为）
-      var tag = (f.type === 'photos' || f.type === 'people' || f.type === 'code') ? 'div' : 'label';
+      // code 同理（曾是「输入框 + 默认按钮」组合，按钮放进 label 点按钮会连带触发 label 行为）；
+      // checks 里面有多个 <label> 与补充输入框，嵌进外层 <label> 属非法 HTML，同样用 div
+      var tag = (f.type === 'photos' || f.type === 'people' || f.type === 'code' || f.type === 'checks')
+        ? 'div' : 'label';
       return '<' + tag + ' class="field' + (f.full ? ' full' : '') + '">' +
         '<span' + (f.required ? ' class="req"' : '') + '>' + U.esc(f.label) + '</span>' +
         ctl + help + '</' + tag + '>';
     }).join('') + '</div>';
+  }
+
+  /** 读 checks 字段：勾选项 + 「其它」补充说明 → { picks, other } */
+  function readChecks(box, f) {
+    var otName = f.otherText || '其它';
+    var picks = [];
+    var boxes = box.querySelectorAll('input[type="checkbox"]');
+    for (var i = 0; i < boxes.length; i++) {
+      if (boxes[i].checked) picks.push(String(boxes[i].value));
+    }
+    var inp = box.querySelector('.chk-other');
+    var other = inp ? String(inp.value || '').trim() : '';
+    /* 写了字却没勾「其它」→ 视为勾上，别让用户白填 */
+    if (other && picks.indexOf(otName) < 0) picks.push(otName);
+    return { picks: picks, other: other };
+  }
+
+  /** checks 的交互：勾「其它」才显示补充框；补充框一有字就自动勾上 */
+  function mountChecks(box, f) {
+    var otName = f.otherText || '其它';
+    var inp = box.querySelector('.chk-other');
+    var boxes = [].slice.call(box.querySelectorAll('input[type="checkbox"]'));
+    var otherBox = null;
+    boxes.forEach(function (b) { if (String(b.value) === otName) otherBox = b; });
+    if (!inp) return;
+    boxes.forEach(function (b) {
+      b.addEventListener('change', function () {
+        if (b !== otherBox) return;
+        inp.hidden = !b.checked;
+        if (b.checked) { inp.focus(); return; }
+        inp.value = '';          /* 取消勾选就连补充说明一起清掉，避免「没勾却留着一句话」 */
+      });
+    });
+    inp.addEventListener('input', function () {
+      if (otherBox && String(inp.value || '').trim()) otherBox.checked = true;
+    });
   }
 
   /** 从 DOM 读回值对象（按字段类型转换） */
@@ -147,6 +213,10 @@ SD.comp.formDialog = (function () {
         out[f.name] = (el._pp ? el._pp.get() : ((fallback && fallback[f.name]) || []));
         return;
       }
+      if (f.type === 'checks') {
+        out[f.name] = readChecks(el, f);
+        return;
+      }
       var v = String(el.value || '').trim();
       if (f.type === 'number') { out[f.name] = v === '' ? null : Number(v); return; }
       out[f.name] = v;
@@ -161,6 +231,8 @@ SD.comp.formDialog = (function () {
       var empty = (v == null) || (String(v).trim() === '');
       // 照片 / 人员是数组，「至少一张 / 至少一人」才算填了
       if (f.type === 'photos' || f.type === 'people') empty = !Array.isArray(v) || v.length === 0;
+      // 多选是 {picks, other}，「至少勾一项」才算填了
+      if (f.type === 'checks') empty = !(v && Array.isArray(v.picks) && v.picks.length);
       if (f.required && empty) return '「' + f.label + '」不能为空';
       if (empty) continue;
       // 编号：空 / 格式 / 同类型重复，统一交给 SD.code.check（七类单据同一套判定）
@@ -180,6 +252,12 @@ SD.comp.formDialog = (function () {
       }
       if (f.type === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(String(v))) {
         return '「' + f.label + '」日期格式应为 YYYY-MM-DD';
+      }
+      if (f.type === 'checks') {
+        var otn = f.otherText || '其它';
+        if (v.picks.indexOf(otn) >= 0 && !String(v.other || '').trim()) {
+          return '「' + f.label + '」勾选了「' + otn + '」，请写明具体内容（不需要就取消勾选）';
+        }
       }
     }
     if (typeof extra === 'function') {
@@ -217,6 +295,8 @@ SD.comp.formDialog = (function () {
               value: (o.values && o.values[f.name]) || [],
               max: f.max || 8
             });
+          } else if (f.type === 'checks') {
+            mountChecks(box, f);
           }
         });
         /* 编号跟着另一个字段走（作业票：编号随「作业类型」变前缀）

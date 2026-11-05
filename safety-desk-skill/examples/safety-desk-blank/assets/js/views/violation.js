@@ -2,6 +2,7 @@
    views/violation.js — 安全违章考核单（★ 2026-11-04 新增，模块 ⑩）
    ────────────────────────────────────────────────────────
    · 一张单 = 一次现场违章：申请人登记 → 记违章员工 / 工号 / 部门 / 部门负责人 / 违章内容
+   · 考核情况（★ 2026-11-05）：处罚 / 保证书 / 其它，可多选；勾「其它」后手写补充说明
    · 支持现场照片（最多 6 张）：编辑表单里插入，**列表点「编号」即可看大图**
    · 编号按 FZKH-001（`config.codeRules.violation`，3 位、不带年份、同类型内唯一）
    · 列表**默认展示全年**（今年 01-01 ~ 12-31），可切年份、也可自定起止日期做区间筛选
@@ -12,6 +13,43 @@ SD.views = SD.views || {};
 
 SD.views.violation = (function () {
   var U = SD.utils;
+
+  /* ---------------- 考核情况（★ 2026-11-05） ----------------
+     三个固定选项，可多选；「其它」需要手写补充。
+     存的是 { picks: ['处罚','其它'], other: '口头教育' } —— picks 与 other 分开，
+     这样「其它」里写的内容不会被当成选项参与统计。 */
+  var ASSESS_OPTIONS = ['处罚', '保证书', '其它'];
+  var OTHER_OPT = '其它';
+
+  /** 归一成 {picks:[], other:''}；兼容老的纯数组写法与 undefined */
+  function assessOf(v) {
+    if (!v) return { picks: [], other: '' };
+    if (Array.isArray(v)) return { picks: v.map(String), other: '' };
+    return {
+      picks: Array.isArray(v.picks) ? v.picks.map(String) : [],
+      other: String(v.other == null ? '' : v.other)
+    };
+  }
+
+  /** 用于搜索与 title 的纯文本，如「处罚 其它：口头教育」 */
+  function assessText(v) {
+    var a = assessOf(v);
+    return a.picks.map(function (p) {
+      return (p === OTHER_OPT && a.other) ? (p + '：' + a.other) : p;
+    }).join(' ');
+  }
+
+  /** 列表展示：每个选项一个小标签；「其它」带出手写内容 */
+  function assessHtml(v) {
+    var a = assessOf(v);
+    if (!a.picks.length) return '<span class="t-3">—</span>';
+    return '<div class="tags">' + a.picks.map(function (p) {
+      var txt = (p === OTHER_OPT && a.other) ? (p + '：' + a.other) : p;
+      var cls = p === '处罚' ? 'b-danger' : (p === '保证书' ? 'b-info' : 'b-mute');
+      var short = txt.length > 16 ? txt.slice(0, 16) + '…' : txt;
+      return '<span class="tag ' + cls + '" title="' + U.esc(txt) + '">' + U.esc(short) + '</span>';
+    }).join('') + '</div>';
+  }
 
   /* ---------------- 字段定义（新增 / 编辑共用） ----------------
      与 data/schema.md 的 §9.6 violations 一节一一对应。 */
@@ -32,6 +70,16 @@ SD.views.violation = (function () {
       placeholder: '例：孙浩' },
     { name: 'content', label: '违章内容', type: 'textarea', required: true, full: true, rows: 3,
       placeholder: '写清违章时间、地点、具体行为，以及违反的规定 / 条款' },
+    /* 考核情况（★ 2026-11-05 新增）：处罚 / 保证书 / 其它，可多选；勾「其它」后手写补充。
+       值结构 { picks: ['处罚','其它'], other: '口头教育 + 停工培训半天' }，
+       picks 与 other 分开存，所以「其它」里写什么都不会被当成新选项。 */
+    {
+      name: 'assessment', label: '考核情况', type: 'checks', full: true,
+      options: ASSESS_OPTIONS, otherText: OTHER_OPT,
+      otherPlaceholder: '例：口头教育 + 停工培训半天（勾「其它」后在这里写明）',
+      def: function () { return { picks: [], other: '' }; },
+      help: '可多选：处罚 / 保证书 / 其它；勾「其它」后需写明具体考核方式（不填则保存时提示）'
+    },
     {
       name: 'photos', label: '现场照片', type: 'photos', full: true, max: 6,
       help: '最多 6 张，可一次多选；自动压到 1000px，存进考核单。台账里点「编号」就能看大图'
@@ -106,6 +154,7 @@ SD.views.violation = (function () {
           dept: v.dept || '',
           leader: v.leader || '',
           content: v.content || '',
+          assessment: assessOf(v.assessment),
           photos: v.photos || [],
           remark: v.remark || '',
           updatedAt: now
@@ -219,7 +268,7 @@ SD.views.violation = (function () {
 
     bar.appendChild(U.h('<span class="spacer"></span>'));
 
-    var q = U.h('<input class="input" placeholder="搜编号 / 员工 / 工号 / 部门 / 内容" style="width:230px" data-keep-focus="violation">');
+    var q = U.h('<input class="input" placeholder="搜编号 / 员工 / 工号 / 部门 / 内容 / 考核情况" style="width:230px" data-keep-focus="violation">');
     q.value = f.q || '';
     q.addEventListener('input', U.debounce(function () { f.q = q.value; redraw(); }, 250));
     bar.appendChild(q);
@@ -247,7 +296,7 @@ SD.views.violation = (function () {
         var kw = String(f.q).toLowerCase();
         list = list.filter(function (r) {
           return (r.code + ' ' + r.employee + ' ' + r.empNo + ' ' + r.dept + ' ' +
-                  r.leader + ' ' + r.applicant + ' ' + r.content)
+                  r.leader + ' ' + r.applicant + ' ' + r.content + ' ' + assessText(r.assessment))
             .toLowerCase().indexOf(kw) >= 0;
         });
       }
@@ -334,6 +383,11 @@ SD.views.violation = (function () {
                 (r.remark ? '<div class="cell-sub">备注：' + U.esc(String(r.remark).slice(0, 30)) + '</div>' : '');
             }
           },
+          {
+            /* 考核情况（★ 2026-11-05）：处罚 / 保证书 / 其它，多选时并列成多个标签 */
+            key: 'assessment', title: '考核情况',
+            render: function (r) { return assessHtml(r.assessment); }
+          },
           { key: 'applicant', title: '申请人', sortable: true, render: function (r) { return U.esc(r.applicant || '—'); } },
           {
             key: '_ops', title: '操作', align: 'right',
@@ -343,7 +397,7 @@ SD.views.violation = (function () {
         rows: list,
         sort: sort,
         onSort: function (k, d) { sort.key = k; sort.dir = d; redraw(); },
-        minWidth: 980
+        minWidth: 1100
       }));
 
       /* 点编号 → 看现场照片（与隐患标题 / 培训名称同一套交互） */
@@ -382,5 +436,9 @@ SD.views.violation = (function () {
     redraw();
   }
 
-  return { name: '安全违章考核单', sub: sub, render: render, FIELDS: FIELDS };
+  /* ASSESS_OPTIONS / assessOf / assessText 对外暴露，供自检与将来导出复用 */
+  return {
+    name: '安全违章考核单', sub: sub, render: render, FIELDS: FIELDS,
+    ASSESS_OPTIONS: ASSESS_OPTIONS, assessOf: assessOf, assessText: assessText, assessHtml: assessHtml
+  };
 })();
