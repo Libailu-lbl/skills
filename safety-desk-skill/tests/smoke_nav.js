@@ -2,7 +2,8 @@
    用法：node safety-desk_dev/smoke_nav.js [url]
 
    覆盖：
-     ① 结构：特种作业 / 更多 / 报表三处都是下拉，都带箭头与 aria-expanded
+     ① 结构：特种作业 / 报表 / 更多三处都是下拉，都带箭头与 aria-expanded；
+        「报表」与「更多」并列同级、排在「更多」之前（2026-11-05 从「更多」里提出）
      ② 初始状态：只有「报表」默认展开（其它两个按当前页决定）
      ③ 点击展开 / 收起，父项自己有页面时顺带进入
      ④ 互斥：同一时间只有一个并列下拉展开；父子层级可同时展开
@@ -81,10 +82,21 @@ function ok(name, cond, extra) {
     ok('「' + k + '」带 aria-expanded 与 aria-controls',
       !!aria(k) && !!h.getAttribute('aria-controls') && !!doc.getElementById(h.getAttribute('aria-controls')));
   });
-  ok('「更多」整组只有一个下拉（不再是小标题 + 列表）',
-    doc.querySelectorAll('#navSecondary > .nav-drop').length === 1 &&
-    !doc.querySelector('#navSecondary .nav-sub-title'),
-    doc.querySelectorAll('#navSecondary > .nav-drop').length + ' 个');
+  const tops = Array.from(doc.querySelectorAll('#navSecondary > .nav-drop')).map(d => d.dataset.drop);
+  ok('二级区是两个并列下拉：报表在前、更多在后',
+    tops.join(',') === 'reports,more', tops.join(','));
+  ok('两者层级一致（同一容器、同一套 class）',
+    Array.from(doc.querySelectorAll('#navSecondary > .nav-drop > .nav-item'))
+      .every(h => h.classList.contains('nav-item') && h.classList.contains('has-children')),
+    Array.from(doc.querySelectorAll('#navSecondary > .nav-drop > .nav-item')).map(h => h.className).join(' || '));
+  ok('「报表」已不再嵌在「更多」内部',
+    !doc.querySelector('#navSecondary .nav-drop[data-drop="more"] .nav-drop[data-drop="reports"]'));
+  ok('旧的小标题结构已下线', !doc.querySelector('#navSecondary .nav-sub-title'));
+  ok('「更多」里只剩数据看板 / 通知公告',
+    Array.from(doc.querySelectorAll('#navSecondary .nav-drop[data-drop="more"] > .nav-drop-body > .nav-item'))
+      .map(x => x.textContent.trim()).join(',') === '数据看板,通知公告',
+    Array.from(doc.querySelectorAll('#navSecondary .nav-drop[data-drop="more"] > .nav-drop-body > .nav-item'))
+      .map(x => x.textContent.trim()).join(','));
   ok('「报表」下拉里是四个入口',
     wrapOf('reports').querySelectorAll('.nav-drop-body > .nav-item').length === 4,
     Array.from(wrapOf('reports').querySelectorAll('.nav-drop-body > .nav-item')).map(x => x.textContent.trim()).join(','));
@@ -117,7 +129,8 @@ function ok(name, cond, extra) {
   await click(headOf('more'));
   ok('再展开「更多」时，「特种作业」自动收起', !isOpen('special') && isOpen('more'),
     'special=' + isOpen('special') + ' more=' + isOpen('more'));
-  ok('「更多」展开后「报表」仍在其内部（父子层级可同时展开）', isOpen('reports'));
+  ok('展开「更多」会收起「报表」（两者并列互斥）', !isOpen('reports') && isOpen('more'),
+    'reports=' + isOpen('reports') + ' more=' + isOpen('more'));
 
   /* ================= 5. 悬停 ================= */
   console.log('== 5. 悬停展开 / 移开收起 ==');
@@ -136,13 +149,15 @@ function ok(name, cond, extra) {
   /* ================= 6. 换页自动展开所属分支 ================= */
   console.log('== 6. 换页自动展开所属分支 ==');
   await goHash('#/violation');
-  ok('进违章考核单：「更多」展开', isOpen('more'));
   ok('进违章考核单：「报表」展开', isOpen('reports'));
-  ok('两级父项都高亮 in-tree', inTree('more') && inTree('reports'));
+  ok('进违章考核单：「更多」保持收起（不在它的地盘）', !isOpen('more'), aria('more'));
+  ok('只有「报表」父项高亮 in-tree', inTree('reports') && !inTree('more'),
+    'reports=' + inTree('reports') + ' more=' + inTree('more'));
   ok('当前子项高亮 active', activeSub() === 'violation', activeSub());
 
   await goHash('#/specPermit');
   ok('进危险作业票：「特种作业」展开', isOpen('special'));
+  /* 报表是「默认展开」的（四个报表入口直接可见），所以切到别的页它仍开着，这里不要求它收起 */
   ok('「特种作业」父项高亮 in-tree', inTree('special'));
   ok('危险作业票子项高亮', activeSub() === 'specPermit', activeSub());
   ok('此时「更多」已收起（离开该分支）', !isOpen('more'), aria('more'));

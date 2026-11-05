@@ -2,9 +2,10 @@
    router.js — 路由与导航
    ────────────────────────────────────────────────────────
    · 用 hash 路由（#/hazard），刷新不丢当前页，也能直接分享某页链接
-   · 导航分两组：常用（常驻，含带子菜单的「特种作业」父级）+ 更多（折叠，含报表小分组）
-   · 常用：安全概览 / 待办任务 / 隐患管理 / 安全巡检 / 安全培训 / 特种作业（▸ 人员 · 作业票）
-   · 更多（折叠）：数据看板 / 通知公告 + 报表小分组（日报 / 周报 / 交接班记录 / 违章考核单）
+   · 导航分两块：常用（常驻，含「特种作业」下拉）+ 下方两个并列下拉「报表」「更多」
+   · 常用：安全概览 / 待办任务 / 隐患管理 / 安全巡检 / 安全培训 / 特种作业（▸ 人员 · 设备人员 · 作业票）
+   · 报表（★ 2026-11-05 从「更多」提出，与它同级且排在它前面）：日报 / 周报 / 交接班记录 / 违章考核单
+   · 更多：数据看板 / 通知公告
    · 特种作业 是「常用区里的独立父级菜单项」，点击进入落地页，其下挂两个子菜单：
        特种作业人员 / 危险作业票
    · 权限：路由可带 perm 字段，无权限时导航显示锁且点击被拦，
@@ -257,6 +258,8 @@ SD.router = (function () {
 
   /**
    * 渲染导航
+   *   els.primary  ← 常用项 + 特种作业下拉
+   *   els.secondary ← 报表下拉 + 更多下拉（并列同级，报表在前）
    * @param {object} els   {primary, secondary, tabbar}
    * @param {string} activeId
    * @param {object} counts {routeId: {n, cls, title}}
@@ -289,27 +292,33 @@ SD.router = (function () {
         });
     }
 
-    /* 更多组：整组一个下拉，里面是 数据看板 / 通知公告 + 「报表」下拉 */
+    /* 靠下的两个顶层下拉：**「报表」在前、「更多」在后，两者并列同级**
+       （★ 2026-11-05：报表从「更多」里提出来，不再嵌在它内部，缩进与字号跟「更多」完全一致） */
     if (els.secondary) {
       U.clear(els.secondary);
       var sec = ROUTES.filter(function (r) { return r.group === 'secondary' && !r.parent; });
-      var items = sec.filter(function (r) { return !r.subGroup; })
-        .map(function (r) { return { kind: 'route', route: r }; });
 
+      /* ① 先渲染各小分组（目前只有 reports），保证「报表」排在「更多」之前 */
       var subs = [];
       sec.forEach(function (r) { if (r.subGroup && subs.indexOf(r.subGroup) < 0) subs.push(r.subGroup); });
       subs.forEach(function (sg) {
         var meta = DROP_META[sg] || { name: SUB_LABEL[sg] || sg, icon: 'file' };
-        items.push({
+        els.secondary.appendChild(dropNode({
           kind: 'drop', key: sg, name: meta.name, icon: meta.icon, nav: null,
           items: sec.filter(function (r) { return r.subGroup === sg; })
                     .map(function (r) { return { kind: 'route', route: r }; })
-        });
+        }, activeId, counts));
       });
 
-      els.secondary.appendChild(dropNode({
-        kind: 'drop', key: 'more', name: DROP_META.more.name, icon: DROP_META.more.icon, nav: null, items: items
-      }, activeId, counts));
+      /* ② 再渲染「更多」：只装没分组的那几项；一项都不剩时整块不出现，不留空壳 */
+      var rest = sec.filter(function (r) { return !r.subGroup; })
+        .map(function (r) { return { kind: 'route', route: r }; });
+      if (rest.length) {
+        els.secondary.appendChild(dropNode({
+          kind: 'drop', key: 'more', name: DROP_META.more.name, icon: DROP_META.more.icon,
+          nav: null, items: rest
+        }, activeId, counts));
+      }
     }
 
     // 手机底部 Tab：常用 3 项 + 更多 2 项（看板/通知）+ 特种作业，共 6 项

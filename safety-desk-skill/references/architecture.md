@@ -171,8 +171,9 @@ compute() 算指标 → renderNav() → renderView() → syncRole()
   children:[{ id:'specPersonnel', name:'特种作业人员' }, …] }
 ```
 
-- `group: primary` → 左侧「常用」常驻；`secondary` → 收进「更多」（下拉）
-- `subGroup: 'reports'` → 在「更多」里再分一个「报表」下拉（★ 2026-11-05 起由小标题改为下拉）
+- `group: primary` → 左侧「常用」常驻；`secondary` → 下方二级区
+- `subGroup: 'reports'` → 单独成「报表」下拉，**与「更多」并列且排在它前面**（★ 2026-11-05）：
+  渲染时先出各 subGroup 的下拉，再出「更多」（只装不带 subGroup 的项），所以层级与缩进完全一致
 - 三处下拉共用同一套：点击/悬停展开、同级互斥、`.in-tree` 高亮、`aria-expanded` + 箭头旋转
 - 「常用功能」顺序来自 `SD.usage.rank()`：按使用次数降序 → 最近使用 → 内置顺序，
   数据存本机 `localStorage.sd_usage_v1`（只在本设备生效）

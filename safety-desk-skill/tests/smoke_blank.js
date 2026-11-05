@@ -346,8 +346,11 @@ function ok(name, cond, extra) {
     const moreNames = Array.from(sec.querySelectorAll('.nav-item .txt')).map(x => x.textContent.trim());
     ok('「更多」组含 数据看板/通知公告/日报/周报',
       ['数据看板', '通知公告', '日报', '周报'].every(k => moreNames.indexOf(k) >= 0), moreNames.join('/'));
-    ok('「更多」里的「报表」是下拉（含日报/周报/交接班/考核单）',
-      !!sec.querySelector('.nav-drop[data-drop="reports"]') &&
+    /* ★ 2026-11-05：「报表」已从「更多」里提出来，与它并列且排在它前面 */
+    const secTops = Array.from(sec.querySelectorAll(':scope > .nav-drop')).map(d => d.dataset.drop);
+    ok('「报表」与「更多」并列，且排在「更多」之前',
+      secTops.join(',') === 'reports,more', secTops.join(','));
+    ok('「报表」下拉含日报/周报/交接班/考核单',
       ['dailyReport', 'weeklyReport', 'shiftLog', 'violation'].every(r =>
         !!sec.querySelector('.nav-drop[data-drop="reports"] [data-route="' + r + '"]')));
   }

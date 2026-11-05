@@ -7,7 +7,7 @@
 <img alt="no build" src="https://img.shields.io/badge/build-none-brightgreen">
 <img alt="no deps" src="https://img.shields.io/badge/runtime%20deps-0-blue">
 <img alt="offline" src="https://img.shields.io/badge/offline-yes-success">
-<img alt="tests" src="https://img.shields.io/badge/selftests-986%20passed-brightgreen">
+<img alt="tests" src="https://img.shields.io/badge/selftests-991%20passed-brightgreen">
 </p>
 
 ---
@@ -72,7 +72,7 @@ node tests/serve.js 8132 my-desk
 
 ```bash
 cd tests && npm install && cd ..
-bash scripts/run_all_tests.sh          # 全部自检：986 项（15 套）
+bash scripts/run_all_tests.sh          # 全部自检：991 项（15 套）
 node scripts/print_probe.js http://127.0.0.1:8124/index.html   # 真打印几页
 ```
 
@@ -103,7 +103,7 @@ safety-desk-skill/
 │       ├── index.html
 │       └── assets/{css/app.css, js/{config,utils,store,auth,router,app}.js}
 ├── examples/
-│   ├── safety-desk-blank/      ★ 可运行示例：10 模块 / 53 JS / 986 项自检（无示例数据）
+│   ├── safety-desk-blank/      ★ 可运行示例：10 模块 / 53 JS / 991 项自检（无示例数据）
 │   └── README.md
 ├── tests/                      jsdom 自检套件 + 静态服务（npm install 后使用）
 └── scripts/
@@ -127,7 +127,7 @@ node tests/serve.js 8124 examples/safety-desk-blank
 # 浏览器打开 http://127.0.0.1:8124/index.html（初始为受限模式，密码见快速开始）
 ```
 
-自检：`bash scripts/run_all_tests.sh` → **986 项**（15 套）全绿。
+自检：`bash scripts/run_all_tests.sh` → **991 项**（15 套）全绿。
 
 > **2026-11-05 起仓库只保留这一套**：原 `examples/safety-desk`（带示例数据、用于演示效果的版本）
 > 已移除 —— 它与本套代码完全相同、只差初始数据，两份并行维护极易不同步（每次改逻辑都要同步两遍、
@@ -137,7 +137,7 @@ node tests/serve.js 8124 examples/safety-desk-blank
 
 ## 自检覆盖了什么
 
-**986 项断言**（15 套），重点不在「页面渲染出来了」，而在**口径和出件**：
+**991 项断言**（15 套），重点不在「页面渲染出来了」，而在**口径和出件**：
 
 - 数量与合计（列表条数 = 状态合计 = 台账总数）
 - 状态机流转（草稿 → 待审批 → 已批准 → 作业中 → 已完工，非法流转被拒）

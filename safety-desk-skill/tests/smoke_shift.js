@@ -83,7 +83,8 @@ function ok(name, cond, extra) {
   console.log('== 2. 导航：报表分组下的交接班记录 ==');
   /* ★ 2026-11-05：「报表」由小标题改成下拉，交接班记录在它的 body 里 */
   const reportsDrop = doc.querySelector('#navSecondary .nav-drop[data-drop="reports"]');
-  ok('「更多」里有「报表」下拉', !!reportsDrop);
+  ok('「报表」是与「更多」并列的顶层下拉（不在「更多」内部）',
+    !!reportsDrop && !doc.querySelector('#navSecondary .nav-drop[data-drop="more"] [data-drop="reports"]'));
   ok('交接班记录在「报表」下拉里',
     !!reportsDrop && !!reportsDrop.querySelector('[data-route="shiftLog"]'),
     reportsDrop ? Array.from(reportsDrop.querySelectorAll('[data-route]')).map(x => x.dataset.route).join(',') : '');
