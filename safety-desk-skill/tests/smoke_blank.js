@@ -217,6 +217,26 @@ function ok(name, cond, extra) {
   await SD.app.reload();
   ok('导入后数据恢复', n('hazards') === 1 && n('workPermits') === 1);
 
+  /* ★ 2026-11-06 迁移回归：备份导入一类都不能丢
+     历史 bug：importJSON 白名单漏了 devicePersonnel / shiftLogs，
+     跨机「导出 → 导入」会静默丢特种设备人员台账与交接班记录。
+     造一份 12 类齐全的备份验证，最后导回原备份，避免影响后续清空用例。 */
+  const raw = k => (SD.store.data()[k] || []).length;
+  const full = JSON.parse(json);
+  full.data.devicePersonnel = [{ id: 'DP-MIG-1', code: 'TZSB-901', name: '迁移回归' }];
+  full.data.shiftLogs = [{ id: 'SL-MIG-1', date: T, shift: 'day' }];
+  const impAll = SD.store.importJSON(JSON.stringify(full));
+  ok('12 类集合齐全的备份可导入', impAll.ok === true, impAll.msg);
+  ok('导入不丢特种设备人员台账 devicePersonnel', raw('devicePersonnel') === 1, raw('devicePersonnel'));
+  ok('导入不丢交接班记录 shiftLogs', raw('shiftLogs') === 1, raw('shiftLogs'));
+  ok('导入后原有台账仍在', raw('hazards') === 1 && raw('workPermits') === 1);
+  ok('DATA_KEYS 唯一清单覆盖 12 类（防再次漏项）',
+    SD.store.DATA_KEYS.length === 12 &&
+    SD.store.DATA_KEYS.indexOf('devicePersonnel') >= 0 &&
+    SD.store.DATA_KEYS.indexOf('shiftLogs') >= 0, SD.store.DATA_KEYS.join(','));
+  SD.store.importJSON(json);
+  await SD.app.reload();
+
   // 清空数据：点按钮 → **清空数据专用密码**校验（2026-10-25 起，不再只是二次确认）
   await go('overview');
   click(doc.getElementById('btnReset'));
@@ -284,7 +304,7 @@ function ok(name, cond, extra) {
   ok('巡检表单有状态下拉（默认待执行）',
     cm && !!cm.querySelector('#ff_status') && cm.querySelector('#ff_status').value === 'planned',
     cm && cm.querySelector('#ff_status') && cm.querySelector('#ff_status').value);
-  set(cm, 'ff_planName', '编号冒烟'); set(cm, 'ff_area', 'A 区'); set(cm, 'ff_executor', '王安全');
+  set(cm, 'ff_planName', '编号冒烟'); set(cm, 'ff_area', 'A 区'); set(cm, 'ff_executor', '李佰陆');
   set(cm, 'ff_code', 'BAD');
   await submit(cm, 700);
   ok('格式不符被拦下', /格式应形如/.test(errText(modal())), errText(modal()));

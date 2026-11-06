@@ -11,6 +11,17 @@ SD.store = (function () {
   var KEY = SD.CONFIG.storageKey;
   var U = SD.utils;
 
+  /* ★ 2026-11-06：数据集合的「唯一清单」
+     以前 load() 和 importJSON() 各写一份白名单，加新台账时容易只改一处：
+     2026-11-05 排查跨机迁移方案时发现 importJSON 漏了 devicePersonnel /
+     shiftLogs，用「导出备份 → 导入恢复」搬数据会静默丢掉特种设备人员台账
+     和交接班记录。现在两处共用这一份，新增集合只改这里。
+     同时导出 SD.store.DATA_KEYS，供迁移脚本做两机数据对数。 */
+  var DATA_KEYS = [
+    'hazards', 'inspections', 'trainings', 'certificates', 'notices', 'violations',
+    'trend', 'deptTrend', 'specialPersonnel', 'devicePersonnel', 'workPermits', 'shiftLogs'
+  ];
+
   /* 内存态：{ data, thresholds, source, dirty } */
   var mem = null;
 
@@ -75,20 +86,10 @@ SD.store = (function () {
       mem = raw;
       // 补齐可能缺失的字段，保证向后兼容（旧备份缺字段时补空，不补假数据）
       mem.thresholds = Object.assign({}, defaults().thresholds, mem.thresholds || {});
-      if (!Array.isArray(mem.data.trend)) mem.data.trend = [];
-      if (!Array.isArray(mem.data.deptTrend)) mem.data.deptTrend = [];
-      if (!Array.isArray(mem.data.inspections)) mem.data.inspections = [];
-      if (!Array.isArray(mem.data.trainings)) mem.data.trainings = [];
-      if (!Array.isArray(mem.data.devicePersonnel)) mem.data.devicePersonnel = [];
-      // 交接班记录（2026-10-25 新增）：老快照没有这个集合时补空数组
-      if (!Array.isArray(mem.data.shiftLogs)) mem.data.shiftLogs = [];
-      // 安全违章考核单（2026-11-04 新增）：老快照没有这个集合时补空数组
-      if (!Array.isArray(mem.data.violations)) mem.data.violations = [];
-      if (!Array.isArray(mem.data.specialPersonnel)) mem.data.specialPersonnel = [];
-      if (!Array.isArray(mem.data.certificates)) mem.data.certificates = [];
-      if (!Array.isArray(mem.data.notices)) mem.data.notices = [];
-      if (!Array.isArray(mem.data.specialPersonnel)) mem.data.specialPersonnel = [];
-      if (!Array.isArray(mem.data.workPermits)) mem.data.workPermits = [];
+      // 老快照缺哪一类就补空数组（含 2026-10-25 交接班、2026-11-04 考核单）
+      DATA_KEYS.forEach(function (k) {
+        if (!Array.isArray(mem.data[k])) mem.data[k] = [];
+      });
       // 老快照里的培训可能没有 photos 字段，补齐成空数组
       (mem.data.trainings || []).forEach(function (t) { if (!Array.isArray(t.photos)) t.photos = []; });
       mem.settings = Object.assign({}, defaults().settings, mem.settings || {});
@@ -248,19 +249,12 @@ SD.store = (function () {
       }
     }
 
-    get().data = {
-      updatedAt: d.updatedAt || new Date().toISOString(),
-      hazards: Array.isArray(d.hazards) ? d.hazards : [],
-      inspections: Array.isArray(d.inspections) ? d.inspections : [],
-      trainings: Array.isArray(d.trainings) ? d.trainings : [],
-      certificates: Array.isArray(d.certificates) ? d.certificates : [],
-      notices: Array.isArray(d.notices) ? d.notices : [],
-      violations: Array.isArray(d.violations) ? d.violations : [],
-      trend: Array.isArray(d.trend) ? d.trend : [],
-      deptTrend: Array.isArray(d.deptTrend) ? d.deptTrend : [],
-      specialPersonnel: Array.isArray(d.specialPersonnel) ? d.specialPersonnel : [],
-      workPermits: Array.isArray(d.workPermits) ? d.workPermits : []
-    };
+    // ★ 按唯一清单逐类搬运：漏一类就等于迁移时丢一类台账（2026-11-06 修复）
+    var next = { updatedAt: d.updatedAt || new Date().toISOString() };
+    DATA_KEYS.forEach(function (k) {
+      next[k] = Array.isArray(d[k]) ? d[k] : [];
+    });
+    get().data = next;
     if (obj.thresholds) get().thresholds = Object.assign({}, get().thresholds, obj.thresholds);
     if (obj.settings) get().settings = Object.assign({}, defaults().settings, obj.settings);
     get().dirty = true;
@@ -270,6 +264,7 @@ SD.store = (function () {
   }
 
   return {
+    DATA_KEYS: DATA_KEYS,
     init: init,
     load: load, get: get, save: save,
     data: data, setData: setData, reset: reset,
