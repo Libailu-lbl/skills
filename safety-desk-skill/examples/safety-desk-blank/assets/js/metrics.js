@@ -469,6 +469,7 @@ SD.metrics = (function () {
 
       notices: data.notices || [],
       violations: (data.violations || []).slice(),   /* 安全违章考核单（2026-11-04） */
+      keyWorks: (data.keyWorks || []).slice(),       /* 安全重要工作看板（★ 2026-11-10） */
       deptRates: deptRates(live),
       deptTrend: deptTrend(data, today),
       typeDist: typeDist(live),

@@ -63,7 +63,7 @@ run_sets() {
 
 echo "== 空白版（单机空白） http://127.0.0.1:$P_BLANK =="
 OUT=$(run_sets "http://127.0.0.1:$P_BLANK/index.html" \
-  smoke_blank smoke_nav smoke_permitcode smoke_device smoke_excelio smoke_shift \
+  smoke_blank smoke_nav smoke_keyworks smoke_permitcode smoke_device smoke_excelio smoke_shift \
   smoke_shift_import smoke_shift_month smoke_security smoke_photo smoke_ocr smoke_vault \
   smoke_monthview smoke_yearview smoke_violation)
 echo "$OUT" | sed '$d'

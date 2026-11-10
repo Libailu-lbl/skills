@@ -125,7 +125,11 @@ function ok(name, cond, extra) {
   ok('巡检页空态带新增动作', view().textContent.indexOf('新增第一条巡检') >= 0);
   await go('overview');
   ok('概览有 4 张指标卡', view().querySelectorAll('.stat').length === 4, view().querySelectorAll('.stat').length);
-  ok('概览「今天要处理」为空态', view().textContent.indexOf('今天没有待处理事项') >= 0);
+  /* ★ 2026-11-10：「今天要处理」已换成「安全重要工作」四列看板 */
+  ok('概览「安全重要工作」看板已就位（四列、空态）',
+    view().querySelectorAll('.kw-col').length === 4 &&
+    Array.from(view().querySelectorAll('.kw-col')).every(c => /暂无事项/.test(c.textContent)));
+  ok('概览不再有「今天要处理」旧卡片', view().textContent.indexOf('今天要处理') < 0);
   await go('dashboard');
   ok('看板「暂无趋势数据」空态', view().textContent.indexOf('暂无趋势数据') >= 0);
   ok('看板「暂无部门趋势数据」空态', view().textContent.indexOf('暂无部门趋势数据') >= 0);
@@ -268,15 +272,18 @@ function ok(name, cond, extra) {
   const full = JSON.parse(json);
   full.data.devicePersonnel = [{ id: 'DP-MIG-1', code: 'TZSB-901', name: '迁移回归' }];
   full.data.shiftLogs = [{ id: 'SL-MIG-1', date: T, shift: 'day' }];
+  full.data.keyWorks = [{ id: 'KW-MIG-1', title: '迁移回归-重点事项', status: 'todo', pri: 'mid' }];
   const impAll = SD.store.importJSON(JSON.stringify(full));
-  ok('12 类集合齐全的备份可导入', impAll.ok === true, impAll.msg);
+  ok('13 类集合齐全的备份可导入', impAll.ok === true, impAll.msg);
   ok('导入不丢特种设备人员台账 devicePersonnel', raw('devicePersonnel') === 1, raw('devicePersonnel'));
   ok('导入不丢交接班记录 shiftLogs', raw('shiftLogs') === 1, raw('shiftLogs'));
+  ok('导入不丢安全重要工作看板 keyWorks', raw('keyWorks') === 1, raw('keyWorks'));
   ok('导入后原有台账仍在', raw('hazards') === 1 && raw('workPermits') === 1);
-  ok('DATA_KEYS 唯一清单覆盖 12 类（防再次漏项）',
-    SD.store.DATA_KEYS.length === 12 &&
+  ok('DATA_KEYS 唯一清单覆盖 13 类（防再次漏项）',
+    SD.store.DATA_KEYS.length === 13 &&
     SD.store.DATA_KEYS.indexOf('devicePersonnel') >= 0 &&
-    SD.store.DATA_KEYS.indexOf('shiftLogs') >= 0, SD.store.DATA_KEYS.join(','));
+    SD.store.DATA_KEYS.indexOf('shiftLogs') >= 0 &&
+    SD.store.DATA_KEYS.indexOf('keyWorks') >= 0, SD.store.DATA_KEYS.join(','));
   SD.store.importJSON(json);
   await SD.app.reload();
 

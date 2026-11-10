@@ -23,7 +23,8 @@ SD.initial = (function () {
       specialPersonnel: [],
       devicePersonnel: [], // 特种作业人员
       workPermits: [],      // 危险作业票
-      shiftLogs: []         // 安全巡检交接班记录（2026-10-25）
+      shiftLogs: [],        // 安全巡检交接班记录（2026-10-25）
+      keyWorks: []          // 安全重要工作看板（★ 2026-11-10，概览页看板数据）
     };
   }
 

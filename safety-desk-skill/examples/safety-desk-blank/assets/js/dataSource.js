@@ -313,6 +313,11 @@ SD.api = (function () {
   /* 安全违章考核单（★ 2026-11-04）：编号 FZKH-001，一单一次违章 */
   var violationCRUD     = crud('violations',       '/violations',       { idPrefix: 'VK', codeType: 'violation' });
 
+  /* 安全重要工作看板（★ 2026-11-10）
+     不是法定台账，没有单据编号，也不进 code.js 的编号中枢：
+     一个事项就是一条卡片记录，id 由本地生成，字段见 data/schema.md 第 12 节。 */
+  var keyWorkCRUD       = crud('keyWorks',         '/key-works',        { idPrefix: 'KW' });
+
   /**
    * 隐患作废（不是物理删除）
    * 隐患台账属法定留痕材料，登记表不允许抹掉 —— 这里只把它置为「已作废」，
@@ -432,6 +437,12 @@ SD.api = (function () {
     listShiftLogs: shiftLogCRUD.list,
     createShiftLog: shiftLogCRUD.create,
     updateShiftLog: shiftLogCRUD.update,
-    removeShiftLog: shiftLogCRUD.remove
+    removeShiftLog: shiftLogCRUD.remove,
+
+    // 安全重要工作看板（★ 2026-11-10，概览页四列看板）
+    listKeyWorks: keyWorkCRUD.list,
+    createKeyWork: keyWorkCRUD.create,
+    updateKeyWork: keyWorkCRUD.update,
+    removeKeyWork: keyWorkCRUD.remove
   };
 })();

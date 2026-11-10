@@ -19,7 +19,8 @@ SD.store = (function () {
      同时导出 SD.store.DATA_KEYS，供迁移脚本做两机数据对数。 */
   var DATA_KEYS = [
     'hazards', 'inspections', 'trainings', 'certificates', 'notices', 'violations',
-    'trend', 'deptTrend', 'specialPersonnel', 'devicePersonnel', 'workPermits', 'shiftLogs'
+    'trend', 'deptTrend', 'specialPersonnel', 'devicePersonnel', 'workPermits', 'shiftLogs',
+    'keyWorks'      // 安全重要工作看板（★ 2026-11-10）
   ];
 
   /* 内存态：{ data, thresholds, source, dirty } */

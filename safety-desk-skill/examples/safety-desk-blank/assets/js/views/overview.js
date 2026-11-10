@@ -1,11 +1,14 @@
 /* =========================================================
-   views/overview.js — 安全概览（模块 1：概览指标卡 + 今日要处理）
+   views/overview.js — 安全概览（模块 1：概览指标卡 + 安全重要工作看板）
    ────────────────────────────────────────────────────────
    结构：
      · 4 张指标卡（点卡片可下钻到对应模块）
-     · 「今天要处理」置顶区（昨日未完成自动顺延，不会凭空消失）
-     · 隐患等级分布 + 通知公告摘要 + 常用功能快捷入口
+     · 「安全重要工作」四列看板（★ 2026-11-10 替换原「今天要处理」列表，
+       看板本体在 components/keyBoard.js，这里只负责摆位置）
+     · 隐患等级分布 + 通知公告摘要
    本视图只读 ctx.summary，不自己取数、不调用其它视图。
+   注：原「今天要处理」清单是「台账自动推导的待办」，已整体让位给看板；
+       那些待办仍在「待办任务」页（导航第二项）完整保留，一条没少。
    ========================================================= */
 window.SD = window.SD || {};
 SD.views = SD.views || {};
@@ -69,40 +72,10 @@ SD.views.overview = (function () {
     ]);
     host.appendChild(stats);
 
-    /* ---------- 2. 今天要处理（置顶） ---------- */
-    var todayBox = U.h(
-      '<section class="card">' +
-        '<div class="card-head">' +
-          '<div><h3>今天要处理</h3>' +
-          '<div class="sub">隐患 / 巡检 / 作业票 / 培训的未完成项，按优先级排列（逾期顺延、不会消失）</div></div>' +
-          '<div class="actions"></div>' +
-        '</div>' +
-        '<div class="todo-list"></div>' +
-      '</section>'
-    );
-    var actBox = todayBox.querySelector('.actions');
-    var allBtn = U.h('<button class="btn ghost sm">查看全部 ' + s.todos.length + ' 项' + SD.icons.get('chevronR', 14) + '</button>');
-    allBtn.addEventListener('click', function () { ctx.go('todo'); });
-    actBox.appendChild(allBtn);
-
-    var listBox = todayBox.querySelector('.todo-list');
-    if (!s.todos.length) {
-      listBox.appendChild(SD.comp.state.build('empty', {
-        title: '今天没有待处理事项', desc: '逾期、今日到期、待复核的隐患和今日巡检都会出现在这里。'
-      }));
-    } else {
-      s.todos.slice(0, 6).forEach(function (item) {
-        listBox.appendChild(SD.comp.listItem.todo(item, {
-          showDone: true,
-          onDone: function (it) { ctx.completeTodo(it); }
-        }));
-      });
-      if (s.todos.length > 6) {
-        var more = U.h('<div class="t-3 t-sm" style="padding:4px 2px">还有 ' + (s.todos.length - 6) + ' 项，点右上角「查看全部」</div>');
-        listBox.appendChild(more);
-      }
-    }
-    host.appendChild(todayBox);
+    /* ---------- 2. 安全重要工作看板（★ 2026-11-10 替换原「今天要处理」） ----------
+       原先是「台账自动推导的待办」纵向清单；现在换成手录的四列看板。
+       看板自己管数据、筛选、拖动与弹窗，这里只给它一个落点。 */
+    SD.comp.keyBoard.render(host, ctx);
 
     /* ---------- 3. 等级分布 + 通知摘要 ---------- */
     var row = U.h('<div class="grid cols-2"></div>');
