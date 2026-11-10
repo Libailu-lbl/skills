@@ -311,7 +311,10 @@ SD.views.training = (function () {
         SD.comp.dropdown.open({
           anchor: el,
           items: [
-            { act: 'download', text: '下载照片' + ((t.photos || []).length ? '（' + (t.photos || []).length + ' 张）' : '') },
+            /* ★ 2026-11-10：受限模式不许下载照片（水印弹窗入口还有一道守卫） */
+            SD.auth.canExport()
+              ? { act: 'download', text: '下载照片' + ((t.photos || []).length ? '（' + (t.photos || []).length + ' 张）' : '') }
+              : { act: 'download', text: '下载照片（受限模式不可用）', disabled: true },
             { act: 'edit', text: '编辑' },
             { act: 'del', text: '删除', danger: true }
           ],

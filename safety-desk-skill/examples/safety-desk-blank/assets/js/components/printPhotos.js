@@ -362,6 +362,12 @@ SD.comp.printPhotos = (function () {
   }
 
   function saveAsDoc(p, st) {
+    /* ★ 2026-11-10：受限模式不许导出 Word（照片墙 .docx 同样能带走全部现场照片）；
+       打印仍放行。守卫放在入口，避免先白转一遍像素再被拒。 */
+    if (!SD.auth.canExport()) {
+      SD.auth.denyExport('受限模式：保存为 Word 需要安全员权限。可直接打印。');
+      return;
+    }
     /* Word 链路（2026-10-22 用户要求「按原始插入图片长边横向」）：
        ① itemsOf(st) 取**原始插入图片**，不读 st.rotItems——屏幕预览的自动旋转
          可能已把某些横图转成竖的，Word 出件必须从原图重新判定；
@@ -429,16 +435,18 @@ SD.comp.printPhotos = (function () {
       '<div class="pp-overlay">' +
         '<div class="pp-toolbar">' +
           '<span class="pp-tb-title">作业票照片 · 单页 A4 出件</span>' +
-          '<button class="btn sm ghost js-upload">' + SD.icons.get('upload', 14) + '上传照片</button>' +
+          '<button class="btn sm ghost js-upload"' + (SD.auth.can('data.write') ? '' : ' disabled aria-disabled="true"') + '>' + SD.icons.get('upload', 14) + '上传照片</button>' +
           '<label class="pp-chk"><input type="checkbox" class="js-rot" checked>按长宽自动旋转</label>' +
           '<span class="pp-spacer"></span>' +
-          '<button class="btn sm ghost js-doc">' + SD.icons.get('download', 14) + '保存为 Word</button>' +
+          '<button class="btn sm ghost js-doc" data-export="1">' + SD.icons.get('download', 14) + '保存为 Word</button>' +
           '<button class="btn sm primary js-print">' + SD.icons.get('printer', 14) + '打印</button>' +
           '<button class="btn sm ghost js-close">关闭</button>' +
           '<input type="file" accept="image/*" multiple class="js-file" style="display:none">' +
-          '<span class="pp-tip js-tip">所有照片自动缩排在一张 A4 上（最多 ' + MAX_PHOTOS +
-            ' 张）；打印时纸张选 A4、缩放「默认」。若出现网址/日期页眉，取消「页眉和页脚」；' +
-            '要完全干净的件用「保存为 Word」</span>' +
+          '<span class="pp-tip js-tip">' + (SD.auth.canExport()
+            ? '所有照片自动缩排在一张 A4 上（最多 ' + MAX_PHOTOS + ' 张）；打印时纸张选 A4、缩放「默认」。' +
+              '若出现网址/日期页眉，取消「页眉和页脚」；要完全干净的件用「保存为 Word」'
+            : '受限模式：可打印，保存为 Word 已锁定。打印时纸张选 A4、缩放「默认」，若出现网址/日期页眉请取消「页眉和页脚」') +
+          '</span>' +
         '</div>' +
         '<div class="pp-wrap"><div class="pp-sheet js-sheet"></div></div>' +
       '</div>'
@@ -446,6 +454,12 @@ SD.comp.printPhotos = (function () {
 
     var sheet = overlay.querySelector('.js-sheet');
     var fileInput = overlay.querySelector('.js-file');
+
+    /* 受限模式：「保存为 Word」置灰（打印留着） */
+    if (!SD.auth.canExport()) {
+      SD.auth.lockBtn(overlay.querySelector('.js-doc'),
+        '受限模式：保存为 Word 需要安全员权限（可直接打印）');
+    }
 
     function paint() { sheet.innerHTML = buildSheet(p, st); fit(); }
 

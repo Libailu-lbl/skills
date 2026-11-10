@@ -421,7 +421,9 @@ SD.comp.docxWriter = (function () {
     return bytes;
   }
 
+  /* ★ 2026-11-10：所有 .docx 出件的唯一出口，同样守一道（见 auth.js 三层防护） */
   function download(blob, filename) {
+    if (window.SD && SD.auth && !SD.auth.canExport()) return SD.auth.denyExport();
     var url = (window.URL || window.webkitURL).createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;

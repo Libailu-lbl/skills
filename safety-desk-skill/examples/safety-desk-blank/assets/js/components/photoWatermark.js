@@ -267,6 +267,12 @@ SD.comp.photoWatermark = (function () {
    */
   function open(photos, opts) {
     opts = opts || {};
+    /* ★ 2026-11-10：受限模式不许下载照片（加水印/原图/批量都是把现场照片带走）。
+       这个弹窗的唯一用途就是下载，所以拦在门口，别让人调好水印再被拒。 */
+    if (!SD.auth.canExport()) {
+      SD.auth.denyExport('受限模式：下载照片需要安全员权限。');
+      return null;
+    }
     var list = (photos || []).filter(Boolean);
     if (!list.length) { U.toast('这条记录还没有照片', 'err'); return null; }
 
@@ -424,6 +430,7 @@ SD.comp.photoWatermark = (function () {
     }
 
     mask.querySelector('.js-wm-one').addEventListener('click', function () {
+      if (!SD.auth.canExport()) return SD.auth.denyExport('受限模式：下载照片需要安全员权限。');
       var im = st.imgs[st.i];
       if (!im) return;
       remember();
@@ -437,6 +444,7 @@ SD.comp.photoWatermark = (function () {
     });
 
     mask.querySelector('.js-wm-raw').addEventListener('click', function () {
+      if (!SD.auth.canExport()) return SD.auth.denyExport('受限模式：下载照片需要安全员权限。');
       var src = list[st.i];
       var name = fileName(opts.code, st.i + 1, true, list.length);
       if (/^data:/.test(src)) {
@@ -448,6 +456,7 @@ SD.comp.photoWatermark = (function () {
     });
 
     mask.querySelector('.js-wm-all').addEventListener('click', function () {
+      if (!SD.auth.canExport()) return SD.auth.denyExport('受限模式：下载照片需要安全员权限。');
       remember();
       var btn = mask.querySelector('.js-wm-all');
       btn.disabled = true;

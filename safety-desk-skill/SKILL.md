@@ -6,7 +6,7 @@ description: 搭建「离线优先的个人业务工作台」HTML 应用的完�
 # 安全员工作台 · 搭建 SKILL
 
 > 一个「双击 index.html 就能用、断网不崩、能打印能导出、别人克隆就能改」的业务工作台，是怎么一步步做出来的。
-> 本 SKILL 提炼自一套 55 个 JS 文件、1157 项自检全绿的实际项目（`examples/safety-desk-blank`）。
+> 本 SKILL 提炼自一套 55 个 JS 文件、1228 项自检全绿的实际项目（`examples/safety-desk-blank`）。
 
 ---
 
@@ -150,11 +150,13 @@ assets/js/
 
 ### 第 7 步 · 加权限与安全控制
 
-- 默认**受限**：能看、能打印、能导出，不能改
+- 默认**受限**：能看、能打印，**不能导出、不能改**
 - 六位登录密码解锁（只对本次打开有效 → sessionStorage）
 - **清空数据 = 专用密码**（与登录密码分开存）
 - **30 分钟无操作自动退回受限**
 - 写操作再加一道兜底拦截（防止有人绕过按钮直接调 API）
+- 导出自成能力点 `data.export` + 三层防护（按钮禁用 / `[data-export]` 捕获兜底 / 下载落点再判）；
+  **打印不在收紧范围**（纸质留痕不产生可编辑文件）
 
 详见 `references/security-model.md`。
 
@@ -336,7 +338,7 @@ python scripts/compare_xlsx.py 原表.xlsx 导出件.xlsx
 | `references/testing.md` | jsdom 自检 + 真打印取证的写法与坑 |
 | `references/pitfalls.md` | **20 条实测踩坑**（先看这个，能省两天） |
 | `assets/skeleton/` | 可运行的最小骨架（19 项自检全绿） |
-| `examples/safety-desk-blank/` | 可运行示例：55 个 JS、10 个模块、1157 项自检（无示例数据） |
+| `examples/safety-desk-blank/` | 可运行示例：55 个 JS、10 个模块、1228 项自检（无示例数据） |
 
 ---
 

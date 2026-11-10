@@ -342,6 +342,11 @@ SD.comp.excelIO = (function () {
   }
 
   function openImport(opt) {
+    /* 导入是写操作：受限模式拦在门口，别让人进来只能对着灰色的「下载模板」发呆 */
+    if (!SD.auth.can('data.write')) {
+      U.toast('受限模式：导入台账需要安全员权限。点右上角「受限模式」输入六位密码解锁。', 'err');
+      return null;
+    }
     var state = { res: null, fatal: '', fileName: '', parsing: false, mode: 'append' };
 
     var body = U.h(
@@ -351,7 +356,7 @@ SD.comp.excelIO = (function () {
           '<button type="button" class="btn sm ghost js-pick">' + SD.icons.get('upload', 14) + '选择文件</button>' +
           '<span class="xio-name js-name">未选择文件</span>' +
           '<span class="spacer"></span>' +
-          '<button type="button" class="btn sm ghost js-tpl">下载模板</button>' +
+          '<button type="button" class="btn sm ghost js-tpl" data-export="1">下载模板</button>' +
         '</div>' +
         '<input type="file" class="js-file" accept=".xlsx,.xlsm,.csv" hidden>' +
         '<div class="xio-mode">导入方式：' +
@@ -452,6 +457,9 @@ SD.comp.excelIO = (function () {
   }
 
   function exportExcel(opt) {
+    /* ★ 2026-11-10：受限模式不许导出（台账整份带走 = 泄密）。第三层守卫在这里，
+       按钮那层已置灰；程序内直接调也拦得住。 */
+    if (!SD.auth.canExport()) return SD.auth.denyExport();
     var list = (SD.store.data()[opt.collection] || []);
     if (!list.length) { U.toast('台账是空的，没有可导出的数据', 'err'); return; }
 
@@ -475,6 +483,9 @@ SD.comp.excelIO = (function () {
   }
 
   function downloadTemplate(opt) {
+    /* 模板里只有表头 + 一行示例，本身不含台账数据；但模板只服务于「导入」，
+       而导入本来就要安全员权限 —— 一并收紧，权限口径才一致。 */
+    if (!SD.auth.canExport()) return SD.auth.denyExport('受限模式：下载导入模板需要安全员权限。');
     var rows = [headerRow(opt.fields)];
 
     /* 一行示例：帮用户看清日期格式与字典取值；姓名标了「示例行」，忘删也能一眼认出 */

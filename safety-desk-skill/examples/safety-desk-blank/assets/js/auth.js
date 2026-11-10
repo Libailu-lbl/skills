@@ -2,8 +2,8 @@
    auth.js — 角色 / 权限 / 六位安全员密码
    ────────────────────────────────────────────────────────
    2026-10-25 改版（按用户要求）：
-     · **进入工作台默认就是「受限用户」**——只能看、能打印、能导出 Excel，
-       但不能新增 / 修改 / 删除，也进不了特种作业、改不了密码与数据
+     · **进入工作台默认就是「受限用户」**——只能看、能打印，
+       但不能导出、不能新增 / 修改 / 删除，也进不了特种作业、改不了密码与数据
      · 要变成「安全员（全权）」，必须在页面里输入 **六位安全员密码**
      · 解锁只对**本次打开有效**（sessionStorage）：关掉再进又回到受限，
        避免「解一次就永久敞开」
@@ -17,6 +17,9 @@
    能力点（perm）：
      data.read      浏览（受限用户也有）
      data.write     新增 / 修改 / 删除（安全员）
+     data.export    **出件导出**：Excel / Word / 照片 / JSON 备份（安全员）
+                    ★ 2026-11-10 新增：用户要求「受限模式下的所有导出一并收紧」。
+                      打印**不算**导出（纸质留痕，不产生可编辑文件），受限仍可用。
      special.view   特种作业模块（安全员）
      settings.write 导入 / 清空数据 / 改密码（安全员）
 
@@ -38,11 +41,11 @@ SD.auth = (function () {
       name: '安全员（全权）',
       desc: '可管理隐患、巡检、培训、证书、通知、特种作业与全部设置',
       full: true,
-      perms: ['data.read', 'data.write', 'special.view', 'settings.write']
+      perms: ['data.read', 'data.write', 'data.export', 'special.view', 'settings.write']
     },
     restricted: {
       name: '受限用户',
-      desc: '只能查看、打印与导出；新增 / 修改 / 删除、特种作业、导入与清空需要安全员密码',
+      desc: '只能查看与打印；导出（Excel / Word / 照片 / 备份）、新增 / 修改 / 删除、特种作业、导入与清空需安全员密码',
       full: false,
       perms: ['data.read']
     }
@@ -77,6 +80,62 @@ SD.auth = (function () {
     var r = roleInfo();
     if (r.full) return true;
     return (r.perms || []).indexOf(perm) >= 0;
+  }
+
+  /* ---------------- 出件（导出）统一守卫 ----------------
+     ★ 2026-11-10 用户要求：受限模式下**所有导出一并收紧**。
+       原先只有交接班记录锁了导出，其余（台账 Excel、日报/周报、通知书 Word、
+       作业票照片 Word、培训照片下载、JSON 备份）都还能导 —— 那些文件同样能带走
+       整份台账，等于把「受限」开了一道后门。现在统一收到 data.export 这一个能力点上：
+
+       · 提示文案：DENY_EXPORT_MSG（唯一口径，各处不再各写一句）
+       · canExport()  ：给渲染层判断按钮要不要变锁定态
+       · denyExport() ：给函数入口兜底（防按钮没禁住 / 程序内直接调用）
+       · lockBtn()    ：把按钮画成「禁用 + is-locked + aria + title」
+       · unlockBtn()  ：角色切回安全员后复原（避免解锁后按钮还是灰的）
+
+       三层防护（与交接班那套一致）：
+         ① 按钮禁用（视觉与提示）→ 不让人白点
+         ② installExportGuard（app.js，捕获阶段）→ 兜底拦 [data-export]
+         ③ 导出函数 + 下载落点入口 → 真正拦得住（不含糊）
+     ------------------------------------------------------ */
+  var DENY_EXPORT_MSG = '受限模式：导出需要安全员权限。点右上角「受限模式」输入六位密码解锁。';
+
+  /** 是否允许出件（导出 Excel / Word / 照片 / JSON 备份） */
+  function canExport() { return can('data.export'); }
+
+  /** 被拒时统一吐一句（不依赖 utils 是否已加载） */
+  function denyExport(msg) {
+    var u = window.SD && SD.utils;
+    var text = msg || DENY_EXPORT_MSG;
+    if (u && typeof u.toast === 'function') u.toast(text, 'err');
+    return false;
+  }
+
+  /** 把按钮标成受限锁定态（不禁用也能用：传 disable=false 只做视觉标记） */
+  function lockBtn(btn, why, disable) {
+    if (!btn) return btn;
+    try {
+      if (disable !== false) btn.disabled = true;
+      btn.classList.add('is-locked');
+      btn.setAttribute('aria-disabled', 'true');
+      btn.setAttribute('title', why || '受限模式：导出需要安全员权限');
+      if (btn.dataset) btn.dataset.exportLocked = '1';
+    } catch (e) {}
+    return btn;
+  }
+
+  /** 复原 lockBtn 的锁定态 */
+  function unlockBtn(btn, title) {
+    if (!btn) return btn;
+    try {
+      btn.disabled = false;
+      btn.classList.remove('is-locked');
+      btn.removeAttribute('aria-disabled');
+      if (title) btn.setAttribute('title', title);
+      if (btn.dataset) delete btn.dataset.exportLocked;
+    } catch (e) {}
+    return btn;
   }
 
   /* ---------------- 六位密码 ---------------- */
@@ -187,6 +246,11 @@ SD.auth = (function () {
     set: set,
     roleInfo: roleInfo,
     can: can,
+    canExport: canExport,
+    DENY_EXPORT_MSG: DENY_EXPORT_MSG,
+    denyExport: denyExport,
+    lockBtn: lockBtn,
+    unlockBtn: unlockBtn,
     hasPin: hasPin,
     verifyPin: verifyPin,
     DEFAULT_PURGE_PIN: DEFAULT_PURGE_PIN,

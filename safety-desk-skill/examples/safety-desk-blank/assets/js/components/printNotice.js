@@ -312,6 +312,13 @@ SD.comp.printNotice = (function () {
 
   /** 保存为 .docx；照片先过栅格化（SVG 示例图 → PNG）再读尺寸，完成后回调 ok 供写留痕 */
   function saveAsDoc(h, st, cb) {
+    /* ★ 2026-11-10：受限模式不许导出 Word（.docx 是可编辑数据，能整份带走）；
+       打印仍放行 —— 纸质留痕不产生文件。入口守卫放在最前面，照片栅格化都别白跑。 */
+    if (!SD.auth.canExport()) {
+      SD.auth.denyExport('受限模式：保存为 Word 需要安全员权限。可直接打印。');
+      if (cb) cb(false);
+      return;
+    }
     var photos = (st.photos || []).filter(Boolean);
     var left = photos.length, rastered = new Array(photos.length);
     if (!left) return finish();
@@ -361,6 +368,15 @@ SD.comp.printNotice = (function () {
     };
     var logged = false;   // 留痕只写一次，防止 print/afterprint 双触发
 
+    /* 工具栏提示：受限模式要讲清「能打印、不能导 Word」，否则按钮灰着很莫名 */
+    function tipText() {
+      if (!SD.auth.canExport()) {
+        return '受限模式：可打印，保存为 Word 已锁定；打印对话框里若出现网址/日期页眉页脚，在「更多设置」里取消勾选。';
+      }
+      return '打印对话框里若出现网址/日期等页眉页脚，在「更多设置」取消勾选「页眉和页脚」；' +
+        '想要干净件可直接「保存为 Word」用 Word 打印';
+    }
+
     var overlay = U.h(
       '<div class="pn-overlay">' +
         '<div class="pn-toolbar">' +
@@ -369,13 +385,12 @@ SD.comp.printNotice = (function () {
           '<label class="pn-field">验收单位<input class="input js-vd" value="' + U.esc(st.verifyDept) + '"></label>' +
           '<span class="pn-spacer"></span>' +
           '<label class="pn-field"><input type="checkbox" class="js-log" checked>出件后写流转留痕</label>' +
-          '<button class="btn sm ghost js-upload">上传现场照片</button>' +
-          '<button class="btn sm ghost js-doc">保存为 Word</button>' +
+          '<button class="btn sm ghost js-upload"' + (SD.auth.can('data.write') ? '' : ' disabled aria-disabled="true"') + '>上传现场照片</button>' +
+          '<button class="btn sm ghost js-doc" data-export="1">保存为 Word</button>' +
           '<button class="btn sm primary js-print">打印</button>' +
           '<button class="btn sm ghost js-close">关闭</button>' +
           '<input type="file" accept="image/*" multiple class="js-file" style="display:none">' +
-          '<span class="pn-tip js-tip">打印对话框里若出现网址/日期等页眉页脚，在「更多设置」取消勾选「页眉和页脚」；' +
-          '想要干净件可直接「保存为 Word」用 Word 打印</span>' +
+          '<span class="pn-tip js-tip">' + tipText() + '</span>' +
         '</div>' +
         '<div class="pn-wrap"><div class="pn-sheet js-sheet"></div></div>' +
       '</div>'
@@ -383,6 +398,12 @@ SD.comp.printNotice = (function () {
 
     var sheet = overlay.querySelector('.js-sheet');
     var fileInput = overlay.querySelector('.js-file');
+
+    /* 受限模式：「保存为 Word」置灰（打印留着，纸质件不产生可编辑文件） */
+    if (!SD.auth.canExport()) {
+      SD.auth.lockBtn(overlay.querySelector('.js-doc'),
+        '受限模式：保存为 Word 需要安全员权限（可直接打印）');
+    }
 
     function paint() {
       sheet.innerHTML = buildSheet(h, st);

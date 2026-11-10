@@ -27,7 +27,7 @@ node tests/smoke_shift.js http://127.0.0.1:8124/index.html    # 终端 B
 
 ## 套件清单
 
-### 可运行示例（`examples/safety-desk-blank`，共 1157 项 / 17 套）
+### 可运行示例（`examples/safety-desk-blank`，共 1228 项 / 18 套）
 
 | 套件 | 项数 | 覆盖 |
 |---|---|---|
@@ -48,6 +48,7 @@ node tests/smoke_shift.js http://127.0.0.1:8124/index.html    # 终端 B
 | `smoke_monthview.js` | 42 | 作业票月视图 + 巡查照片上限 18 张 |
 | `smoke_yearview.js` | 47 | 隐患 / 巡检 / 培训 / 通知「默认当年 + 年份下拉」 |
 | `smoke_violation.js` | 76 | 安全违章考核单：编号 FZKH-001、默认全年、点编号看照片、**考核情况多选 + 其它手填**、增改删、受限拦截 |
+| `smoke_export_gate.js` | 71 | 受限模式「所有导出一并收紧」：`data.export` 能力点、下载落点（xlsx/docx）双拦、函数入口（台账/模板/照片弹窗）、顶栏导出备份先验密码、日报周报与交接班按钮置灰 + 绕过被拦、通知书与照片页锁 Word 留打印、培训下载项禁用、`[data-export]` 全局兜底、解锁后全部恢复 |
 
 > 原先只跑「示例数据版」的 11 套（smoke / smoke_code / smoke_crud / smoke_ops / smoke_photos /
 > smoke_print / smoke_reports / smoke_settings / smoke_special / smoke_training / smoke_trend）

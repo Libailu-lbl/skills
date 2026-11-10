@@ -359,6 +359,9 @@ SD.app = (function () {
 
   /* ---------------- 导出备份 ---------------- */
   function exportData() {
+    /* ★ 2026-11-10：受限模式不许导出备份（整份数据一个文件就能全带走）。
+       顶栏齿轮的菜单项做成「可点 → 先输密码 → 再导出」，与相邻的「导入」同一套交互。 */
+    if (!SD.auth.canExport()) return SD.auth.denyExport();
     var text = SD.store.exportJSON();
     var blob = new Blob([text], { type: 'application/json;charset=utf-8' });
     var url = URL.createObjectURL(blob);
@@ -730,6 +733,27 @@ SD.app = (function () {
     }, true);
   }
 
+  /* ---------------- 受限模式：拦下所有导出（出件） ----------------
+     ★ 2026-11-10 用户要求「受限模式下的所有导出一并收紧」。
+       这是第二层：给按钮打 data-export 标记的，捕获阶段直接拦掉——
+       哪怕某个视图忘了自己判权限、或以后新加了导出按钮只加了标记，
+       也不会在受限模式下真的下出文件。
+       真正的第三层在 auth.canExport() 与 xlsx/docx 的下载落点。 */
+  var EXPORT_SEL = '[data-export]';
+  function installExportGuard() {
+    document.addEventListener('click', function (e) {
+      if (SD.auth.canExport()) return;
+      var t = e.target;
+      if (!t || !t.closest) return;
+      var hit = t.closest(EXPORT_SEL);
+      if (!hit) return;
+      if (hit.closest('[data-auth]')) return;      // 密码弹窗内不受限
+      e.preventDefault();
+      e.stopPropagation();
+      SD.auth.denyExport();
+    }, true);
+  }
+
   function syncRolePill() {
     if (!els.rolePill) return;
     var isOfficer = SD.auth.current() === 'safety_officer';
@@ -738,7 +762,20 @@ SD.app = (function () {
     if (els.rolePillIco) els.rolePillIco.innerHTML = iconHtml(isOfficer ? 'check' : 'lock', 13);
     els.rolePill.title = isOfficer
       ? '当前：安全员（全权）。点一下退回受限模式'
-      : '当前：受限用户（只能查看 / 打印 / 导出）。点一下输入六位密码进入安全员权限';
+      : '当前：受限用户（只能查看 / 打印）。点一下输入六位密码进入安全员权限';
+
+    /* 齿轮里的「导出备份」：受限时标锁定态，但**不禁用**——
+       点了先弹密码框，输对了直接导（跟相邻的「导入」一个交互）。 */
+    if (els.btnExport) {
+      var canExp = SD.auth.canExport();
+      els.btnExport.classList.toggle('is-locked', !canExp);
+      els.btnExport.setAttribute('aria-disabled', canExp ? 'false' : 'true');
+      els.btnExport.title = canExp
+        ? '把本机全部数据导出为一个 JSON 备份文件'
+        : '受限模式：导出备份需要安全员权限（点一下输入六位密码）';
+      var hint = els.btnExport.querySelector('.gi-hint');
+      if (hint) hint.textContent = canExp ? 'JSON' : '需解锁';
+    }
   }
 
   /* ---------------- 侧栏「常用功能」（全部菜单统一排名，只显示前 6） ----------------
@@ -935,7 +972,15 @@ SD.app = (function () {
       box.innerHTML = iconHtml(b.getAttribute('data-ico'), 15);
     });
 
-    els.btnExport.addEventListener('click', function () { closeGear(); exportData(); });
+    els.btnExport.addEventListener('click', function () {
+      closeGear();
+      /* 受限：先输六位密码，验过再导（与「导入」一致；按钮本身不禁用，只标锁定态） */
+      if (!SD.auth.canExport()) {
+        openPinDialog({ title: '导出备份需要安全员权限', onOk: exportData });
+        return;
+      }
+      exportData();
+    });
 
     // 设置齿轮：导入 / 导出 / 清空数据 / 角色 / 密码设置
     if (els.gearBtn) {
@@ -953,7 +998,7 @@ SD.app = (function () {
         if (SD.auth.can('data.write')) {
           SD.comp.dialog.confirm({
             title: '退回受限模式',
-            message: '退回后只能查看 / 打印 / 导出，改数据要重新输密码。',
+            message: '退回后只能查看与打印；导出、改数据要重新输密码。',
             okText: '退回受限',
             onOk: function () { SD.auth.lock(); syncRoleUI(); refreshAll(); U.toast('已退回受限模式'); }
           });
@@ -1074,8 +1119,9 @@ SD.app = (function () {
     // 3.5) 左侧导航下方的「常用功能」快捷入口
     renderSidebarQuick();
 
-    // 3.6) 受限模式的写操作门禁 + 右上角角色徽标
+    // 3.6) 受限模式的写操作门禁 + 导出（出件）门禁 + 右上角角色徽标
     installWriteGuard();
+    installExportGuard();
     syncRolePill();
 
     // 3.7) 空闲看门狗：连续 30 分钟（config.security.idleLockMin）无操作 → 自动退回受限

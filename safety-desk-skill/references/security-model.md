@@ -10,8 +10,11 @@
 
 | 角色 | 能做什么 | 不能做什么 |
 |---|---|---|
-| `restricted` 受限（默认） | 查看、打印、导出 Excel/Word、导出备份 | 新增/修改/删除、进特种作业、导入、清空、改密码 |
+| `restricted` 受限（默认） | 查看、打印 | 导出（Excel/Word/照片/备份）、新增/修改/删除、进特种作业、导入、清空、改密码 |
 | `safety_officer` 安全员 | 全部 | — |
+
+> **2026-11-10 起「打印」与「导出」分家**：打印是纸质留痕，不产生可编辑、可带走的文件，受限仍可用；
+> 导出等于把整份台账装进一个文件带走，一律要六位密码。
 
 **默认进来就是受限** —— 这是刻意的：绝大多数时间用户只是「看一眼、打一张」，不该一直握着写权限。
 
@@ -21,7 +24,7 @@
 
 ```js
 var PERMS = {
-  safety_officer: ['data.read', 'data.write', 'special.view', 'settings.write'],
+  safety_officer: ['data.read', 'data.write', 'data.export', 'special.view', 'settings.write'],
   restricted:     ['data.read']
 };
 ```
@@ -30,6 +33,7 @@ var PERMS = {
 |---|---|
 | `data.read` | 浏览（受限也有） |
 | `data.write` | 增删改 |
+| `data.export` | **出件导出**：Excel / Word / 照片 / JSON 备份 / 导入模板（打印不算） |
 | `special.view` | 特种作业模块 |
 | `settings.write` | 导入 / 清空 / 改密码 |
 
@@ -38,6 +42,20 @@ var PERMS = {
 1. **导航层**：路由声明 `perm`，无权限显示锁；点进去渲染「无权限」占位页（`refreshAll` 里统一判，不在每个 view 里判）
 2. **按钮层**：`if (!SD.auth.can('data.write')) 拦下 + 提示`
 3. **兜底层**：全局捕获点击，受限态拦下 `.btn.primary / [data-act=del] / [data-write]` 一类选择器 —— 防止有人漏写按钮级判断
+
+### 导出的三层防护（2026-11-10）
+
+| 层 | 位置 | 说明 |
+|---|---|---|
+| ① 视觉 | `auth.lockBtn(btn)` / `unlockBtn(btn)` | 禁用 + `is-locked`（虚线边 + 半透明）+ `aria-disabled` + title |
+| ② 兜底 | `app.js → installExportGuard()` | 捕获阶段拦所有 `[data-export]`：新加导出按钮只要打这个标记就自动生效 |
+| ③ 真拦 | 各导出函数入口 + `xlsxWriter.download()` / `docxWriter.download()` | 两个下载落点是所有 Excel / Word 出件的唯一出口；照片走 `photoWatermark.open()` 入口 |
+
+```js
+SD.auth.canExport();            // 是否允许出件
+SD.auth.denyExport();           // 统一提示（文案口径 DENY_EXPORT_MSG）
+SD.auth.lockBtn(btn, '受限模式：…需要安全员权限');
+```
 
 ---
 

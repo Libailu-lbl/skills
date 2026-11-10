@@ -268,6 +268,7 @@ SD.views.shiftLog = (function () {
     var s = ctx.state.summary || {};
     var logs = s.shiftLogs || [];
     var ro = readOnly();
+    var noExp = !SD.auth.canExport();   // 导出能力点（与写权限分开：受限两者都没有）
 
     var CUR_MONTH = monthOf(U.today());
 
@@ -347,7 +348,7 @@ SD.views.shiftLog = (function () {
     printBtn.addEventListener('click', function () { openPrint(cur); });
     bar.appendChild(printBtn);
 
-    var xlsBtn = U.h('<button class="btn ghost js-sl-xls" title="导出当日白班、夜班两张表（各一个 sheet，可直接双面打印）">' +
+    var xlsBtn = U.h('<button class="btn ghost js-sl-xls" data-export="1" title="导出当日白班、夜班两张表（各一个 sheet，可直接双面打印）">' +
       SD.icons.get('download', 14) + '导出 Excel（白夜班）</button>');
     xlsBtn.addEventListener('click', function () { exportXlsx(cur); });
     bar.appendChild(xlsBtn);
@@ -357,11 +358,8 @@ SD.views.shiftLog = (function () {
        光提示不禁用，又得点一次才知道不行。两个一起做。
        打印仍然保留：打印是纸质留痕，不产生可编辑的数据文件。
        真正的拦截在 exportXlsx 函数入口，这里只是视觉与提示。 */
-    if (ro) {
-      xlsBtn.disabled = true;
-      xlsBtn.classList.add('is-locked');
-      xlsBtn.setAttribute('title', '受限模式：导出交接班记录需要安全员权限');
-      xlsBtn.setAttribute('aria-disabled', 'true');
+    if (!SD.auth.canExport()) {
+      SD.auth.lockBtn(xlsBtn, '受限模式：导出交接班记录需要安全员权限');
       bar.appendChild(U.h('<span class="t-3 t-sm js-sl-lock-note">受限模式：可查看与打印，导出已锁定</span>'));
     }
 
@@ -686,8 +684,9 @@ SD.views.shiftLog = (function () {
             { act: 'open', text: '打开' },
             { act: 'print', text: '打印这一份' },
             /* ★ 2026-11-10：受限模式下导出与删除都锁定（只留查看与打印）。
-               导出在 exportXlsx 入口还有一道守卫，这里禁用是为了不让人白点。 */
-            { act: 'xls', text: ro ? '导出 Excel（受限模式不可用）' : '导出 Excel', disabled: ro },
+               导出在 exportXlsx 入口还有一道守卫，这里禁用是为了不让人白点。
+               导出按 data.export 判，删除按 data.write 判，两个能力点分开。 */
+            { act: 'xls', text: noExp ? '导出 Excel（受限模式不可用）' : '导出 Excel', disabled: noExp },
             { act: 'del', text: ro ? '删除（受限模式不可用）' : '删除', danger: true, disabled: ro }
           ],
           onPick: function (it) {
@@ -1029,11 +1028,10 @@ SD.views.shiftLog = (function () {
   function exportXlsx(rec) {
     /* ★ 2026-11-10：受限模式不允许导出交接班记录。
        守卫放在**函数入口**而不是只禁按钮 —— 工具栏按钮、行操作菜单的「导出 Excel」、
-       以及以后新增的任何入口都会走到这里，一处堵住最可靠（按钮禁用只是视觉提示）。 */
-    if (!SD.auth.can('data.write')) {
-      U.toast('受限模式：导出交接班记录需要安全员权限。点右上角「受限模式」输入六位密码解锁。', 'err');
-      return;
-    }
+       以及以后新增的任何入口都会走到这里，一处堵住最可靠（按钮禁用只是视觉提示）。
+       ★ 2026-11-10 二次调整：判定的能力点从 data.write 换成 data.export，
+         与「所有导出一并收紧」的口径对齐（打印不受影响）。 */
+    if (!SD.auth.canExport()) return SD.auth.denyExport('受限模式：导出交接班记录需要安全员权限。');
     var logs = (SD.app && SD.app.state && SD.app.state.summary)
       ? (SD.app.state.summary.shiftLogs || []): [];
 

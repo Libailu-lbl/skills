@@ -345,7 +345,7 @@ SD.views.specPersonnel = (function () {
     });
     spacer.appendChild(impBtn);
 
-    var expBtn = U.h('<button class="btn sm ghost" title="把整份台账导出为 Excel">' +
+    var expBtn = U.h('<button class="btn sm ghost" data-export="1" title="把整份台账导出为 Excel">' +
       SD.icons.get('download', 14) + '导出 Excel</button>');
     expBtn.addEventListener('click', function () {
       SD.comp.excelIO.exportExcel({
@@ -353,6 +353,10 @@ SD.views.specPersonnel = (function () {
         sheetName: XIO.sheetName, fileBase: XIO.fileBase
       });
     });
+    /* ★ 2026-11-10：受限模式不许导出台账（excelIO.exportExcel 入口还有一道） */
+    if (!SD.auth.canExport()) {
+      SD.auth.lockBtn(expBtn, '受限模式：导出台账需要安全员权限');
+    }
     spacer.appendChild(expBtn);
 
     var addBtn = U.h('<button class="btn sm primary">' + SD.icons.get('plus', 14) + '新增人员</button>');

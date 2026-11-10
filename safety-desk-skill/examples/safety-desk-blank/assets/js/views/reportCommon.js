@@ -105,8 +105,16 @@ SD.views.reportCommon = (function () {
       '<input type="date" class="input" id="rptDate" value="' + U.esc(date) + '"></label>' +
       '<span class="rpt-period" id="rptPeriod">' + U.esc(periodLabel(kind, agg)) + '</span>' +
       '<div class="spacer"></div>' +
-      '<button class="btn primary" id="rptExport">' + SD.icons.get('download', 15) + '生成' + (isWeekly ? '周报' : '日报') + ' Excel</button></div>');
+      '<button class="btn primary" id="rptExport" data-export="1">' + SD.icons.get('download', 15) + '生成' + (isWeekly ? '周报' : '日报') + ' Excel</button></div>');
     host.appendChild(bar);
+
+    /* ★ 2026-11-10：受限模式不许导出报表（整月数据一张表带走）。
+       按钮置灰 + 旁边一行小字说明原因，真正的拦截在下面的点击入口。 */
+    var expBtn = bar.querySelector('#rptExport');
+    if (!SD.auth.canExport()) {
+      SD.auth.lockBtn(expBtn, '受限模式：导出报表需要安全员权限');
+      bar.appendChild(U.h('<span class="t-3 t-sm">受限模式：可查看与打印，导出已锁定</span>'));
+    }
 
     // 说明
     host.appendChild(U.h('<p class="t-3 t-sm" style="margin:2px 2px 12px">数据来自本工作台当前记录，' +
@@ -132,6 +140,8 @@ SD.views.reportCommon = (function () {
     });
 
     bar.querySelector('#rptExport').addEventListener('click', function () {
+      /* 第三层：入口守卫（按钮已置灰，这里是兜底） */
+      if (!SD.auth.canExport()) return SD.auth.denyExport('受限模式：导出报表需要安全员权限。');
       var meta = {
         title: title,
         sheetName: isWeekly ? '安全周报' : '安全日报',

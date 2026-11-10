@@ -627,11 +627,23 @@ base64 解成 PNG 嵌进 `xl/media/image1.png` + `xl/drawings/drawing1.xml`（on
 - **★ 2026-10-25 起默认受限**：打开页面即 `restricted`，解锁状态存 **sessionStorage**（只对本次
   打开有效，关掉再进回到受限）；切到 `safety_officer` 必须输入**六位安全员密码**（默认 `123456`，
   本机 localStorage 只存加盐摘要，不存明文）。
-- 四种能力点：`data.read`（浏览，受限也有）/ `data.write`（增删改）/ `special.view`（特种作业）/ `settings.write`（导入 / 清空 / 改密码）。
+- 五种能力点：`data.read`（浏览，受限也有）/ `data.write`（增删改）/ `data.export`（导出出件，**2026-11-10 新增**）/ `special.view`（特种作业）/ `settings.write`（导入 / 清空 / 改密码）。
 - 路由表 `router.ROUTES` 中特种作业相关条目声明 `perm:'special.view'`。
 - `app.refreshAll` 在中央统一门禁：路由声明了 `perm` 且 `auth.can(perm)` 为 false → 渲染「无权限」占位页。
 - 另有**写操作兜底拦截** `app.js → installWriteGuard()`：受限态下点新增 / 编辑 / 删除 / 保存一类
-  按钮直接拦下并提示输密码（打印 / 导出不在拦截名单，受限也能出件）。
+  按钮直接拦下并提示输密码。
+- **★ 2026-11-10 起「打印」与「导出」分开**：受限用户**只能查看与打印**，导出全部锁定。
+  - 判定入口 `SD.auth.canExport()`（= `can('data.export')`），提示文案唯一口径 `SD.auth.DENY_EXPORT_MSG`。
+  - 三层防护：① 按钮 `is-locked` + 禁用（模块内导出按钮）；② `app.js → installExportGuard()`
+    捕获阶段拦下所有 `[data-export]` 元素；③ 导出函数入口 + `xlsxWriter.download` /
+    `docxWriter.download` 两个下载落点再判一次。
+  - 收紧范围（8 处）：顶栏齿轮「导出备份 JSON」（保留可点 → 先弹密码框，与「导入」一致）、
+    台账「导出 Excel」（设备人员 / 特种人员）、日报 / 周报「生成 Excel」、交接班「导出 Excel（白夜班）」、
+    隐患通知书「保存为 Word」、作业票照片「保存为 Word」、培训「下载照片」（水印弹窗，含原图 / 批量）、
+    台账「下载导入模板」。
+  - **打印不在收紧范围**：纸质留痕不产生可编辑文件，受限仍可打印通知书 / 交接班表 / 照片页。
+  - 顺带补的两个写口子：通知书 / 照片页弹窗里的「上传照片」在受限下置灰（`updateHazard` /
+    `updateWorkPermit` 会改台账，属写操作）。
 - **清空数据专用密码（2026-10-25 新增）**：`settings.write` 之外再加一道
   —— `SD.auth.verifyPurge(pin)`（默认 `888888`，独立存储 `sd_auth_purge`，与登录密码互不影响；
   `setPurgePin` / `hasPurgePin` 配套）。`app.js → openPurgeDialog()` 里密码错**直接 return 错误串**，

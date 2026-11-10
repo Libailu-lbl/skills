@@ -1214,6 +1214,27 @@ table.usg .usg-when{ width:112px; color:var(--text-3); white-space:nowrap; }
   .kw-item{ box-shadow:none; break-inside:avoid; }
 }
 
-/* ★ 2026-11-10 受限模式：被锁定的按钮（如交接班「导出 Excel」）
-   虚线边 + 半透明，与普通 disabled 区分开，表达「功能存在但要解锁」 */
-.btn.is-locked{ border-style:dashed; }
+/* ★ 2026-11-10 受限模式：被锁定的按钮（如周报「生成 Excel」、交接班「导出 Excel」）
+   虚线边 + 浅灰底 + 灰字：与普通 disabled（整体半透明）区分开，
+   表达「功能存在、但要解锁才能用」，而不是「这按钮坏了」。
+   底色/边色比 --surface-2 / --line-2 深一档：白卡片上要看得见框 */
+.btn.is-locked{
+  border:1px dashed #c3cdd1;
+  background:#f4f6f7;
+  color:var(--text-3);
+  opacity:1;
+  cursor:not-allowed;
+}
+.btn.is-locked:hover{ background:#f4f6f7; border-color:#c3cdd1; color:var(--text-3); }
+.btn.primary.is-locked,
+.btn.primary.is-locked:hover{
+  background:#f4f6f7; border-color:#c3cdd1; color:var(--text-3); box-shadow:none;
+}
+
+/* ★ 2026-11-10 齿轮菜单里的「导出备份」：受限时标锁定态，但**仍可点**
+   （点了先弹六位密码框，验过直接导），所以不给 cursor:not-allowed */
+.gear-item.is-locked{ color:var(--text-3); }
+.gear-item.is-locked .gi-ico{ color:var(--text-3); }
+.gear-item.is-locked .gi-hint{ color:var(--brand-strong); }
+.gear-item.is-locked:hover{ background:var(--brand-soft); color:var(--brand-strong); }
+.gear-item.is-locked:hover .gi-ico{ color:var(--brand-strong); }

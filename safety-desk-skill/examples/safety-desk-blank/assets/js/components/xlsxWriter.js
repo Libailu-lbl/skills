@@ -607,7 +607,11 @@ SD.comp.xlsxWriter = (function () {
     return bytes;
   }
 
+  /* ★ 2026-11-10：下载落点也要守一道（第三层）。
+     上层各入口都判过权限了，但这里是**所有 .xlsx 出件的唯一出口**——
+     以后再有人加一个导出按钮忘了判权限，也不会从这儿漏出去。 */
   function download(blob, filename) {
+    if (window.SD && SD.auth && !SD.auth.canExport()) return SD.auth.denyExport();
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
