@@ -342,6 +342,32 @@ SD.api = (function () {
     });
   }
 
+  /**
+   * 隐患物理删除（★ 2026-11-10 新增，按需求在操作项里提供「删除」）
+   *
+   * 与 voidHazard 的区别（界面上两条路都留着，让用户自己选）：
+   *   · 作废：把状态置为 void，台账记录与流转留痕**永久保留**，只是不计入未整改/逾期/待办；
+   *   · 删除：记录从台账里**真的消失**，不可恢复（编号随之释放，可被后续登记复用）。
+   * 隐患台账是对外检查要看的留痕材料，所以页面上的删除做了二次确认，
+   * 并在确认框里明确写「只是登记错了才删除，正常处置请改用作废」。
+   * 真正删不删由使用者判断，代码不替人做决定，但必须让人看清后果。
+   */
+  function removeHazard(id) {
+    if (isReal()) {
+      return request('/hazards/' + encodeURIComponent(id), { method: 'DELETE' });
+    }
+    return local(function () {
+      var d = SD.store.data();
+      var arr = d.hazards || [];
+      var idx = -1;
+      for (var i = 0; i < arr.length; i++) if (arr[i].id === id) { idx = i; break; }
+      if (idx < 0) throw new Error('隐患不存在：' + id);
+      arr.splice(idx, 1);
+      SD.store.setData(d);
+      return { id: id, removed: true };
+    });
+  }
+
   return {
     source: function () { return C.source; },
     isReal: isReal,
@@ -353,6 +379,7 @@ SD.api = (function () {
     updateHazard: updateHazard,
     advanceHazard: advanceHazard,
     voidHazard: voidHazard,
+    removeHazard: removeHazard,
 
     // 巡检（另有 complete / reschedule 两个业务写操作）
     listInspections: listInspections,

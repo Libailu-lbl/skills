@@ -248,5 +248,10 @@
   .tabbar .tab .nav-count{ position:absolute; top:6px; right:calc(50% - 22px); }
 }
 
-/* 桌面与平板隐藏底部 Tab */
-.tabbar{ display:none; }
+/* 桌面与平板隐藏底部 Tab
+   ★ 2026-11-10 修：原来写成无条件的 .tabbar{display:none}，位置又在上面的媒体查询之后，
+     同优先级下把 <768 里的 display:flex 盖掉了 —— 手机底部 Tab 从来没显示出来过。
+     改成只在 ≥768 时隐藏，手机端恢复底部导航。 */
+@media (min-width:768px){
+  .tabbar{ display:none; }
+}

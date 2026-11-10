@@ -3,9 +3,12 @@
    ────────────────────────────────────────────────────────
    · 用 hash 路由（#/hazard），刷新不丢当前页，也能直接分享某页链接
    · 导航分两块：常用（常驻，含「特种作业」下拉）+ 下方两个并列下拉「报表」「更多」
-   · 常用：安全概览 / 待办任务 / 隐患管理 / 安全巡检 / 安全培训 / 特种作业（▸ 人员 · 设备人员 · 作业票）
-   · 报表（★ 2026-11-05 从「更多」提出，与它同级且排在它前面）：日报 / 周报 / 交接班记录 / 违章考核单
+   · 常用：安全概览 / 待办任务 / 安全巡检 / 安全培训 / 特种作业（▸ 人员 · 设备人员 · 作业票）
+   · 报表（★ 2026-11-05 从「更多」提出，与它同级且排在它前面）：
+       日报 / 周报 / 交接班记录 / 违章考核单 / 隐患整改通知书
    · 更多：数据看板 / 通知公告
+   · ★ 2026-11-10：「隐患管理」更名为「隐患整改通知书」，并从常用区移到「报表」下拉的最后一项
+       （路由 id 仍是 hazard，数据、权限、编号规则、统计口径都不变，只是归类与显示名变了）
    · 特种作业 是「常用区里的独立父级菜单项」，点击进入落地页，其下挂两个子菜单：
        特种作业人员 / 危险作业票
    · 权限：路由可带 perm 字段，无权限时导航显示锁且点击被拦，
@@ -27,7 +30,6 @@ SD.router = (function () {
   var ROUTES = [
     { id: 'overview',   name: '安全概览',   icon: 'overview',   group: 'primary' },
     { id: 'todo',       name: '待办任务',   icon: 'todo',       group: 'primary' },
-    { id: 'hazard',     name: '隐患管理',   icon: 'hazard',     group: 'primary' },
     { id: 'inspection', name: '安全巡检',   icon: 'inspection', group: 'primary' },
     { id: 'training',   name: '安全培训',   icon: 'training',   group: 'primary' },
     { id: 'dashboard',  name: '数据看板',   icon: 'dashboard',  group: 'secondary' },
@@ -39,6 +41,10 @@ SD.router = (function () {
     { id: 'shiftLog', name: '安全巡检交接班记录', short: '交接班记录', icon: 'clipboard', group: 'secondary', subGroup: 'reports' },
     /* 安全违章考核单（★ 2026-11-04）：一单一次违章，编号 FZKH-001，默认看全年 */
     { id: 'violation', name: '安全违章考核单', short: '违章考核单', icon: 'file', group: 'secondary', subGroup: 'reports' },
+    /* 隐患整改通知书（原「隐患管理」，★ 2026-11-10 更名并移入报表组）：
+       台账本体不变（登记 / 流转 / 作废 / 打印通知书），只是归到「报表」下拉里，
+       排在报表组最后 —— 它本身就是一张要出件的通知书，和日报周报同类 */
+    { id: 'hazard', name: '隐患整改通知书', short: '整改通知书', icon: 'hazard', group: 'secondary', subGroup: 'reports' },
 
     /* 特种作业：常用区里的独立父级菜单项（带子菜单与权限门禁），
        子项由 navItem 递归渲染在父级下方，不单独进组 */
@@ -308,10 +314,12 @@ SD.router = (function () {
       }
     }
 
-    // 手机底部 Tab：常用 3 项 + 更多 2 项（看板/通知）+ 特种作业，共 6 项
+    // 手机底部 Tab：常用 4 项 + 更多 2 项（看板/通知）+ 特种作业，共 6 项
+    // ★ 2026-11-10：隐患整改通知书已归入「报表」下拉，与日报/周报同类，不再占底部 Tab，
+    //   空出的位置给同属常用区的「安全巡检」（底部 Tab 只放常用区功能，口径更一致）
     if (els.tabbar) {
       U.clear(els.tabbar);
-      ['overview', 'todo', 'hazard', 'special', 'dashboard', 'notice'].forEach(function (id) {
+      ['overview', 'todo', 'inspection', 'special', 'dashboard', 'notice'].forEach(function (id) {
         var r = find(id); if (!r) return;
         var t = U.h(
           '<button class="tab' + (inTree(r, activeId) ? ' active' : '') + '">' +

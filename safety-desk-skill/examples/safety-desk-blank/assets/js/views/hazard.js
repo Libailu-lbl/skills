@@ -1,5 +1,5 @@
 /* =========================================================
-   views/hazard.js — 隐患管理（模块 3）
+   views/hazard.js — 隐患整改通知书（模块 3，原「隐患管理」★ 2026-11-10 更名）
    ────────────────────────────────────────────────────────
    · 登记隐患（类型 / 等级 / 责任部门 / 整改期限）
    · 状态流转：待整改 → 整改中 → 待验收 → 已闭环，旁挂「已延期」
@@ -174,6 +174,37 @@ SD.views.hazard = (function () {
       onSubmit: function (v) {
         return SD.api.voidHazard(h.id, v.reason).then(function () {
           U.toast('隐患已作废（记录保留）', 'ok');
+          ctx.reload();
+        });
+      }
+    });
+  }
+
+  /* ---------------- 删除隐患（物理删除，不可恢复） ----------------
+     ★ 2026-11-10 按需求在「操作」菜单里新增删除项。
+     与「作废」是两条不同的路，两个入口都留着，由使用者判断该用哪个：
+       · 作废：状态置为 void，台账记录与流转留痕**永久保留**，只是不计入未闭环 / 逾期 / 待办；
+       · 删除：记录从台账里**真的消失**，补不回来，编号随之释放（可被后续登记复用）。
+     隐患台账是对外检查要看的东西，所以这里必须弹确认框把后果讲清，
+     并明确写「只是登记错了才删除，正常处置请用作废」，避免误点。
+  -------------------------------------------------------------- */
+  function remove(ctx, h) {
+    if (!SD.auth.can('data.write')) {
+      U.toast('受限模式：删除需要安全员权限（点右上角解锁）', 'err');
+      return;
+    }
+    var extra = h.status === 'closed' ? '（该隐患已闭环）' : '';
+    SD.comp.dialog.confirm({
+      title: '删除隐患 · ' + h.code,
+      width: 480,
+      message: '将把「' + h.title + '」' + extra + '从隐患台账中彻底删除，删除后不可恢复；' +
+               '编号 ' + h.code + ' 会一并释放，可被后续登记复用。' +
+               '只有登记错了（重复登记 / 录错部门）才用删除；如果只是不再跟进、但仍要留痕备查，' +
+               '请改用「作废」—— 作废会把记录与流转永久保留。',
+      okText: '确认删除', danger: true,
+      onOk: function () {
+        return SD.api.removeHazard(h.id).then(function () {
+          U.toast('隐患已删除', 'ok');
           ctx.reload();
         });
       }
@@ -377,8 +408,9 @@ SD.views.hazard = (function () {
   }
 
   /* ---------------- 操作菜单 ----------------
-     菜单项按状态动态生成：可推进的状态在前面，后面是通知书 / 编辑 / 作废 / 详情
-     （作废只给在办项：闭环是完成态，作废针对登记有误的在办项）
+     菜单项按状态动态生成：可推进的状态在前面，后面是通知书 / 编辑 / 作废 / 删除 / 详情
+     （作废只给在办项：闭环是完成态，作废针对登记有误的在办项；
+      删除不设状态门槛 —— 录入错的、重复的、早期测试数据，任何状态都可能需要清掉）
   ------------------------------------------------ */
   function advanceLabel(o) {
     if (o === 'verifying') return '提交验收';
@@ -396,6 +428,7 @@ SD.views.hazard = (function () {
     if (h.status !== 'closed' && h.status !== 'void') {
       items.push({ act: 'void', text: '作废', danger: true });
     }
+    items.push({ act: 'del', text: '删除', danger: true });
     items.push({ act: 'detail', text: '查看详情' });
     return items;
   }
@@ -405,6 +438,7 @@ SD.views.hazard = (function () {
     else if (it.act === 'detail') openDetail(ctx, h);
     else if (it.act === 'edit') openEdit(ctx, h);
     else if (it.act === 'void') openVoid(ctx, h);
+    else if (it.act === 'del') remove(ctx, h);
     else if (it.act === 'notice') SD.comp.printNotice.open(h, { ctx: ctx });
   }
 
@@ -641,5 +675,5 @@ SD.views.hazard = (function () {
     ));
   }
 
-  return { name: '隐患管理', sub: sub, render: render, openCreate: openCreate };
+  return { name: '隐患整改通知书', sub: sub, render: render, openCreate: openCreate };
 })();

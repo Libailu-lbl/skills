@@ -99,9 +99,18 @@ function ok(name, cond, extra) {
       .map(x => x.textContent.trim()).join(',') === '数据看板,通知公告',
     Array.from(doc.querySelectorAll('#navSecondary .nav-drop[data-drop="more"] > .nav-drop-body > .nav-item'))
       .map(x => x.textContent.trim()).join(','));
-  ok('「报表」下拉里是四个入口',
-    wrapOf('reports').querySelectorAll('.nav-drop-body > .nav-item').length === 4,
+  ok('「报表」下拉里是五个入口（★ 2026-11-10 隐患整改通知书并入）',
+    wrapOf('reports').querySelectorAll('.nav-drop-body > .nav-item').length === 5,
     Array.from(wrapOf('reports').querySelectorAll('.nav-drop-body > .nav-item')).map(x => x.textContent.trim()).join(','));
+  ok('「报表」最后一项就是隐患整改通知书（移到报表之下）',
+    Array.from(wrapOf('reports').querySelectorAll('.nav-drop-body > .nav-item'))
+      .slice(-1)[0].textContent.trim() === '隐患整改通知书',
+    Array.from(wrapOf('reports').querySelectorAll('.nav-drop-body > .nav-item')).map(x => x.textContent.trim()).join(','));
+  ok('常用区不再有「隐患管理」这个旧名字',
+    !Array.from(doc.querySelectorAll('#navPrimary .nav-item .txt')).some(x => /^隐患管理$/.test(x.textContent.trim())));
+  ok('隐患页路由 id 未变（只改显示名与归类，数据/权限/编号不受影响）',
+    !!SD.router.find('hazard') && SD.router.find('hazard').name === '隐患整改通知书',
+    SD.router.find('hazard') && SD.router.find('hazard').name);
   ok('「特种作业」下拉里是三个入口',
     wrapOf('special').querySelectorAll('.nav-drop-body > .nav-item').length === 3,
     Array.from(wrapOf('special').querySelectorAll('.nav-drop-body > .nav-item')).map(x => x.textContent.trim()).join(','));
@@ -177,7 +186,10 @@ function ok(name, cond, extra) {
   /* ================= 7. 同页保留 / 换页复原 ================= */
   console.log('== 7. 同页重绘保留手动开合 ==');
   await goHash('#/hazard');
-  ok('进隐患页：三个下拉都收起', !isOpen('special') && !isOpen('more') && !isOpen('reports'));
+  /* ★ 2026-11-10：隐患整改通知书已归入「报表」，进这一页时「报表」应当自动展开 */
+  ok('进隐患页：只有「报表」展开（它已在该分支下）',
+    isOpen('reports') && !isOpen('special') && !isOpen('more'),
+    'reports=' + isOpen('reports') + ' special=' + isOpen('special') + ' more=' + isOpen('more'));
   await click(headOf('more'));
   ok('手动展开「更多」', isOpen('more'));
   SD.app.refreshAll();                          // 模拟「点筛选 / 改数据」触发的重绘
@@ -219,7 +231,7 @@ function ok(name, cond, extra) {
 
   await resetAll();
   ok('全部 0 次时按菜单内置顺序展示前 6 项',
-    quicks().join(',') === '安全概览,待办任务,隐患管理,安全巡检,安全培训,数据看板', quicks().join(','));
+    quicks().join(',') === '安全概览,待办任务,安全巡检,安全培训,数据看板,通知公告', quicks().join(','));
   ok('15 个候选里只展示 6 个', quicks().length === 6, String(quicks().length));
   ok('空数据给出「默认顺序」说明',
     note() === '暂无使用记录，按菜单默认顺序展示', note());
@@ -246,7 +258,7 @@ function ok(name, cond, extra) {
   SD.app.refreshAll();
   await wait(450);
   ok('次数相同看最近使用：后用的「安全培训」排在「通知公告」前',
-    quicks().join(',') === '安全培训,通知公告,安全概览,待办任务,隐患管理,安全巡检', quicks().join(','));
+    quicks().join(',') === '安全培训,通知公告,安全概览,待办任务,安全巡检,数据看板', quicks().join(','));
 
   /* 并列落选：7 项同为 1 次时，第 6 名只有一席，落选的要被注明 */
   await resetAll();
@@ -291,7 +303,7 @@ function ok(name, cond, extra) {
   SD.app.refreshAll();
   await wait(450);
   await click(doc.querySelector('.js-sidebar-quick .quick'));
-  ok('点第一个磁贴直达该功能（隐患管理）', SD.router.current() === 'hazard', SD.router.current());
+  ok('点第一个磁贴直达该功能（整改通知书）', SD.router.current() === 'hazard', SD.router.current());
 
   /* 「?」打开完整统计：全部 15 项 + 四条口径 + 前六标记 */
   await resetAll();
@@ -329,7 +341,7 @@ function ok(name, cond, extra) {
   SD.app.refreshAll();
   await wait(450);
   ok('reset 后恢复菜单默认顺序',
-    quicks().join(',') === '安全概览,待办任务,隐患管理,安全巡检,安全培训,数据看板',
+    quicks().join(',') === '安全概览,待办任务,安全巡检,安全培训,数据看板,通知公告',
     quicks().join(','));
   ok('reset 后计数清零', SD.usage.count('training') === 0, SD.usage.count('training'));
   ok('board 接口口径自洽（前 6 + 其余 = 参与排名的全部）', (() => {

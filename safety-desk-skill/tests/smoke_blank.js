@@ -179,6 +179,49 @@ function ok(name, cond, extra) {
   ok('作废后退出在办口径', SD.app.state.summary.openCount === 0 && SD.app.state.summary.voidCount === 1);
   ok('作废记录仍在台账（留痕）', n('hazards') === 1);
 
+  /* ---------- 删除隐患（★ 2026-11-10 新增）：作废留痕、删除真删，两条路并存 ---------- */
+  const hzDel = await SD.api.createHazard({
+    code: 'FZYH-0000002', title: '冒烟-重复登记的隐患', type: '消防', severity: 'general', statutoryLevel: 'general',
+    dept: '生产一部', owner: '测试员', location: 'A 区', source: '日常巡检',
+    foundDate: T, originalDueDate: T, dueDate: T, measure: '—', note: ''
+  });
+  await SD.app.reload();
+  ok('待删除的隐患已登记（台账 2 条）', n('hazards') === 2, n('hazards'));
+
+  await go('hazard');
+  const opsBtn = Array.from(doc.querySelectorAll('[data-act="ops"]')).find(b => b.dataset.id === hzDel.id);
+  ok('该行有「操作 ▾」按钮', !!opsBtn);
+  await click(opsBtn);
+  await wait(120);
+  const opsMenu = doc.querySelector('.dd-menu');
+  const delItem = opsMenu && Array.from(opsMenu.querySelectorAll('button'))
+    .find(x => x.textContent.trim() === '删除');
+  ok('操作菜单里有「删除」，与「作废」并列（两条路都留着）',
+    !!delItem && /作废/.test(opsMenu.textContent), opsMenu ? opsMenu.textContent.replace(/\s+/g, ' ').trim() : '无菜单');
+
+  await click(delItem);
+  await wait(150);
+  const cdlg = doc.querySelector('.mask .modal');
+  ok('删除前弹确认框，写明彻底删除 / 不可恢复 / 编号释放',
+    !!cdlg && /彻底删除/.test(cdlg.textContent) && /不可恢复/.test(cdlg.textContent) && /释放/.test(cdlg.textContent),
+    cdlg ? cdlg.textContent.replace(/\s+/g, ' ').slice(0, 100) : '无弹窗');
+  ok('确认框提示「只是登记错了才删除」，把作废指出来',
+    !!cdlg && /登记错/.test(cdlg.textContent) && /作废/.test(cdlg.textContent),
+    cdlg ? cdlg.textContent.replace(/\s+/g, ' ').slice(0, 120) : '无弹窗');
+
+  await click(cdlg.querySelector('.js-ok'));
+  await wait(500);
+  ok('确认后台账只剩 1 条', n('hazards') === 1, n('hazards'));
+  ok('删的是登记错的那条，作废记录原样留着',
+    SD.app.state.data.hazards[0].code === 'FZYH-0000001' &&
+    SD.app.state.data.hazards[0].status === 'void',
+    JSON.stringify(SD.app.state.data.hazards.map(h => [h.code, h.status])));
+  ok('删除后编号释放，同号可再登记', !SD.code.check('hazard', 'FZYH-0000002'),
+    SD.code.check('hazard', 'FZYH-0000002') || '（空=通过）');
+  let delAgain = '';
+  try { await SD.api.removeHazard(hzDel.id); } catch (e) { delAgain = e.message || String(e); }
+  ok('重复删除给出「隐患不存在」，不静默成功', /隐患不存在/.test(delAgain), delAgain || '（没报错）');
+
   // 巡检 / 培训 / 通知 / 作业票 / 人员：增 → 删（各来一轮；编号均为手填）
   const insp = await SD.api.createInspection({ code: 'FZXJ-' + Y + '-001', planName: '冒烟-巡检', type: '日常巡检', area: 'A 区', dept: '安环部', executor: '测试员', scheduledDate: T });
   ok('新增巡检成功', !!insp && insp.code === 'FZXJ-' + Y + '-001', insp && insp.code);
@@ -351,10 +394,11 @@ function ok(name, cond, extra) {
       ok('连续输入的文字完整保留', qNow && qNow.value === 'ABC', qNow && qNow.value);
       ok('焦点始终在输入框', doc.activeElement === qNow);
     }
-    // 导航分组：常用 5 项常驻；看板/通知/日报/周报 在「更多」里
+    // 导航分组：常用区 4 项 + 特种作业（隐患整改通知书已移入「报表」，★ 2026-11-10）
     const primary = Array.from(doc.querySelectorAll('#navPrimary .nav-item .txt')).map(x => x.textContent.trim());
-    ok('常用组含 概览/待办/隐患/巡检/培训/特种作业',
-      ['安全概览', '待办任务', '隐患管理', '安全巡检', '安全培训', '特种作业'].every(k => primary.indexOf(k) >= 0),
+    ok('常用组含 概览/待办/巡检/培训/特种作业，且不再有「隐患管理」',
+      ['安全概览', '待办任务', '安全巡检', '安全培训', '特种作业'].every(k => primary.indexOf(k) >= 0) &&
+      primary.indexOf('隐患管理') < 0 && primary.indexOf('隐患整改通知书') < 0,
       primary.join('/'));
     /* ★ 2026-11-05：特种作业改成下拉，父项是 .nav-drop 的头（带 data-route），三个子项在它自己的 body 里 */
     ok('特种作业父级与三个子菜单都在常用区',
@@ -366,6 +410,8 @@ function ok(name, cond, extra) {
     const moreNames = Array.from(sec.querySelectorAll('.nav-item .txt')).map(x => x.textContent.trim());
     ok('「更多」组含 数据看板/通知公告/日报/周报',
       ['数据看板', '通知公告', '日报', '周报'].every(k => moreNames.indexOf(k) >= 0), moreNames.join('/'));
+    ok('「报表」组含隐患整改通知书（改名后的隐患台账）',
+      moreNames.indexOf('隐患整改通知书') >= 0, moreNames.join('/'));
     /* ★ 2026-11-05：「报表」已从「更多」里提出来，与它并列且排在它前面 */
     const secTops = Array.from(sec.querySelectorAll(':scope > .nav-drop')).map(d => d.dataset.drop);
     ok('「报表」与「更多」并列，且排在「更多」之前',

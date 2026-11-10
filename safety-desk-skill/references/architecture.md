@@ -111,7 +111,7 @@ assets/js/
 └── views/                 每个路由一个文件
     ├── overview.js        概览：指标卡 + 今天要处理 + 趋势
     ├── todo.js            待办（跨模块汇总）
-    ├── hazard.js          隐患台账（含流转、通知书）
+    ├── hazard.js          隐患整改通知书（台账 + 流转 + 作废/删除 + 通知书出件）
     ├── inspection.js      巡检任务
     ├── training.js        培训与证书
     ├── dashboard.js       数据看板
