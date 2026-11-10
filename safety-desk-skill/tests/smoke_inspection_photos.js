@@ -16,6 +16,8 @@
      8  无照片任务不计数；改期 / 取消的任务已上传照片仍计入
      9  空态：没有照片时看板给出「暂无隐患照片」而不是空白
     10  口径说明：页面写明照片口径与台账口径的分工
+    11  隐患类型（★ 2026-11-10 新增字段）：表单有下拉、非必填；看板类型分布改按巡检统计
+        （一条任务记一次，含未分类，合计等于有照片的任务数）
 */
 const { JSDOM } = require('jsdom');
 const URL_ = process.argv[2] || 'http://127.0.0.1:8124/index.html';
@@ -83,6 +85,18 @@ function ok(name, cond, extra) {
   ok('照片控件存在且上限 18 张', !!phSlot && phSlot.getAttribute('data-max') === '18',
     phSlot ? phSlot.getAttribute('data-max') : '无控件');
 
+  /* ★ 2026-11-10：表单新增「隐患类型」，供看板「隐患类型分布」出图 */
+  const labels = modal ? Array.from(modal.querySelectorAll('.field > span, label > span')).map(x => x.textContent.trim()) : [];
+  ok('表单有「隐患类型」字段', labels.some(t => t === '隐患类型'), labels.join('/'));
+  const hzTypeSel = modal ? Array.from(modal.querySelectorAll('select')).find(sel => {
+    const f = sel.closest('.field, label');
+    const sp = f && f.querySelector('span');
+    return sp && sp.textContent.trim() === '隐患类型';
+  }) : null;
+  ok('隐患类型是下拉且选项来自字典', !!hzTypeSel && hzTypeSel.options.length >= 10,
+    hzTypeSel ? hzTypeSel.options.length + ' 项' : '无下拉');
+  ok('隐患类型非必填', !hzTypeSel || !hzTypeSel.closest('.field, label').classList.contains('req'));
+
   /* 关掉弹窗 */
   const cancelBtn = modal && Array.from(modal.querySelectorAll('.btn')).find(b => /取消/.test(b.textContent));
   if (cancelBtn) cancelBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
@@ -94,11 +108,14 @@ function ok(name, cond, extra) {
   d.inspections = [
     { id: 'IP-A', code: 'FZXJ-7000001', planName: '装配车间日常巡检', type: '日常巡检', area: 'A 区装配线',
       dept: '生产一部', executor: '测试员', scheduledDate: d10, status: 'done', photos: shot(2),
+      hazardType: '消防',
       completedAt: d10, record: { findings: '无异常', hazardCount: 0, signedBy: '测试员', signedAt: d10 } },
     { id: 'IP-B', code: 'FZXJ-7000002', planName: '装配线二次巡检', type: '日常巡检', area: 'A 区装配线',
-      dept: '生产一部', executor: '测试员', scheduledDate: d05, status: 'planned', photos: shot(1) },
+      dept: '生产一部', executor: '测试员', scheduledDate: d05, status: 'planned', photos: shot(1),
+      hazardType: '消防' },
     { id: 'IP-C', code: 'FZXJ-7000003', planName: '未填部门巡检', type: '专项检查', area: 'B 区',
-      dept: '', executor: '测试员', scheduledDate: d10, status: 'planned', photos: shot(3) },
+      dept: '', executor: '测试员', scheduledDate: d10, status: 'planned', photos: shot(3),
+      hazardType: '电气' },
     { id: 'IP-D', code: 'FZXJ-7000004', planName: '没传照片的巡检', type: '季节性检查', area: 'C 区',
       dept: '仓储部', executor: '测试员', scheduledDate: d10, status: 'planned', photos: [] },
     { id: 'IP-E', code: 'FZXJ-7000005', planName: '已取消但传了照片', type: '综合巡查', area: 'D 区',
@@ -139,6 +156,21 @@ function ok(name, cond, extra) {
     ip.byDept.reduce((a, x) => a + x.photos, 0) === ip.totalPhotos,
     ip.byDept.reduce((a, x) => a + x.photos, 0) + ' vs ' + ip.totalPhotos);
 
+  /* ---- 隐患类型（★ 2026-11-10 新增字段）---- */
+  ok('byType 分组数 3（消防 / 电气 / 未分类）', ip.byType.length === 3,
+    ip.byType.map(t => t.type + ':' + t.tasks).join(','));
+  ok('消防 2 次（IP-A + IP-B）',
+    ip.byType.some(t => t.type === '消防' && t.tasks === 2),
+    JSON.stringify(ip.byType[0]));
+  ok('电气 1 次', ip.byType.some(t => t.type === '电气' && t.tasks === 1));
+  ok('没填类型的归「未分类」且仍计入',
+    ip.byType.some(t => t.type === '未分类' && t.tasks === 1),
+    ip.byType.map(t => t.type).join(','));
+  ok('类型合计 = 有照片的任务数（一条任务记一次）',
+    ip.byType.reduce((a, t) => a + t.tasks, 0) === ip.totalTasks,
+    ip.byType.reduce((a, t) => a + t.tasks, 0) + ' vs ' + ip.totalTasks);
+  ok('按次数降序', ip.byType.every((t, i) => i === 0 || ip.byType[i - 1].tasks >= t.tasks));
+
   /* ================= 4. 看板呈现 ================= */
   console.log('== 4. 数据看板：KPI 与各部门照片 ==');
   await go('dashboard');
@@ -168,6 +200,16 @@ function ok(name, cond, extra) {
   const trendCard = Array.from(view().querySelectorAll('.card'))
     .find(c => /各部门隐患照片趋势/.test((c.querySelector('h3') || {}).textContent || ''));
   ok('趋势区块标题已改为「各部门隐患照片趋势」', !!trendCard);
+
+  const typeCard = Array.from(view().querySelectorAll('.card'))
+    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '隐患类型分布');
+  ok('类型分布改用巡检口径', !!typeCard && /基于巡检/.test(typeCard.textContent),
+    typeCard ? typeCard.querySelector('.sub').textContent : '无');
+  ok('类型分布中心显示隐患次数 4', !!typeCard && /隐患次数/.test(typeCard.textContent) &&
+    typeCard.querySelector('svg') && typeCard.textContent.indexOf('消防') >= 0,
+    typeCard ? typeCard.textContent.replace(/\s+/g, ' ').slice(0, 80) : '无');
+  ok('类型分布图例含 消防 2', !!typeCard && /消防\s*2/.test(typeCard.textContent.replace(/\s+/g, ' ')),
+    typeCard ? typeCard.textContent.replace(/\s+/g, ' ').slice(0, 100) : '无');
   const noteText = view().textContent.replace(/\s+/g, ' ');
   ok('口径说明写清照片口径（按部门汇总 / 未指定部门 / 张数）',
     /各部门相加恒等于总张数/.test(noteText) && /未填的归「未指定部门」/.test(noteText));

@@ -320,6 +320,14 @@ table.tbl tr.row-warn td:first-child{ box-shadow:inset 3px 0 0 var(--lv-large); 
   transition:background .15s, border-color .15s, color .15s;
 }
 .todo-check:hover{ border-color:var(--brand); color:var(--brand-line); }
+/* ★ 2026-11-10 受限模式：待办推进按钮锁定态 —— 小锁 + 虚线边 + 不可点，
+   一眼看出「只能看不能动」，而不是点了才弹一句没权限 */
+.todo-check.is-locked,
+.todo-check.is-locked:hover{
+  border-style:dashed; border-color:var(--line-2);
+  background:var(--surface-2); color:var(--text-3);
+  cursor:not-allowed; opacity:.85;
+}
 .todo-item .body{ flex:1 1 auto; min-width:0; }
 .todo-item .title{ font-size:13.5px; font-weight:600; }
 .todo-item .meta{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:5px; }
@@ -1205,3 +1213,7 @@ table.usg .usg-when{ width:112px; color:var(--text-3); white-space:nowrap; }
   .kw-col{ background:#fff; border:1px solid #ccc; break-inside:avoid; }
   .kw-item{ box-shadow:none; break-inside:avoid; }
 }
+
+/* ★ 2026-11-10 受限模式：被锁定的按钮（如交接班「导出 Excel」）
+   虚线边 + 半透明，与普通 disabled 区分开，表达「功能存在但要解锁」 */
+.btn.is-locked{ border-style:dashed; }

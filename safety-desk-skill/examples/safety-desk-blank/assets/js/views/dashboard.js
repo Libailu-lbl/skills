@@ -188,25 +188,32 @@ SD.views.dashboard = (function () {
     }
     host.appendChild(photoCard);
 
-    /* ---------- 类型分布 + 等级分布（台账口径） ---------- */
+    /* ---------- 类型分布（巡检口径）+ 等级分布（台账口径） ----------
+       类型分布能走巡检口径，是因为 2026-11-10 给巡检表单加了「隐患类型」字段；
+       等级分布走不了 —— 巡检没有等级字段，硬编号称就名不副实了。
+       所以这一对卡片口径不同，副标题里分别写清，别让人以为是一套数。 */
     var row = U.h('<div class="grid cols-2"></div>');
 
+    var typeItems = (ip.byType || []).map(function (t, i) {
+      return { name: t.type, value: t.tasks, color: PALETTE[i % PALETTE.length] };
+    });
     var typeCard = U.h(
       '<section class="card"><div class="card-head"><div><h3>隐患类型分布</h3>' +
-      '<div class="sub">基于隐患台账条数，按条数降序</div></div></div><div class="js-body"></div></section>'
+      '<div class="sub">基于巡检：按隐患类型归类，一条巡检记一次（含未分类），按次数降序</div></div></div>' +
+      '<div class="js-body"></div></section>'
     );
-    if (!s.typeDist.length) {
-      typeCard.querySelector('.js-body').appendChild(SD.comp.state.build('empty', { title: '暂无数据' }));
+    if (!typeItems.length) {
+      typeCard.querySelector('.js-body').appendChild(SD.comp.state.build('empty', {
+        title: '暂无隐患类型数据',
+        desc: '在「安全巡检 → 新增巡检任务」里上传隐患照片并选「隐患类型」后，这里会按类型汇总。'
+      }));
     } else {
-      var items = s.typeDist.map(function (t, i) {
-        return { name: t.type, value: t.count, color: PALETTE[i % PALETTE.length] };
-      });
       typeCard.querySelector('.js-body').innerHTML =
         SD.comp.chart.donut({
-          items: items,
-          center: { top: String(s.totalHazards), bottom: '台账隐患' }
+          items: typeItems,
+          center: { top: String(ip.totalTasks), bottom: '隐患次数' }
         }) +
-        '<div class="chart-legend">' + items.map(function (it) {
+        '<div class="chart-legend">' + typeItems.map(function (it) {
           return '<span class="li"><span class="sw" style="background:' + it.color + '"></span>' +
             U.esc(it.name) + ' <span class="v">' + it.value + '</span></span>';
         }).join('') + '</div>';
@@ -262,10 +269,12 @@ SD.views.dashboard = (function () {
       '<div style="margin-top:4px"><b>一、隐患照片（主口径）</b>　统计「安全巡检 → 新增巡检任务」里上传的' +
       '<b>隐患照片张数</b>（字段原名「巡查照片」，2026-11-10 更名，存储键不变，历史记录照常计数）。' +
       '部门归属取巡检任务的「责任部门」，未填的归「未指定部门」，因此<b>各部门相加恒等于总张数</b>；' +
-      '按巡检<b>计划日期</b>归月；任务改期或取消时，已上传的照片仍然计入（照片是现场证据，不随任务状态消失）。</div>' +
+      '按巡检<b>计划日期</b>归月；任务改期或取消时，已上传的照片仍然计入（照片是现场证据，不随任务状态消失）。<br>' +
+      '<b>隐患类型分布</b>同属巡检口径，但计的是<b>次数</b>：一条有照片的巡检记一次（含未分类），' +
+      '所以类型合计 = 有隐患照片的任务数，不等于照片张数 —— 照片是证据，任务是事件。</div>' +
       '<div style="margin-top:4px"><b>二、隐患台账（状态口径）</b>　隐患趋势（新增 / 闭环）、闭环率、逾期未闭环、' +
-      '延期跟进、类型分布、等级分布、整改率均基于隐患台账条数 —— 照片没有状态与等级，' +
-      '无法用于计算闭环，所以闭环类指标必须留在台账口径。</div>' +
+      '延期跟进、隐患等级分布、整改率均基于隐患台账条数 —— 巡检没有整改状态与等级，' +
+      '算不出闭环，也无法给隐患定级，所以这些指标必须留在台账口径。</div>' +
       '<div style="margin-top:4px">两条口径在页面标题里已分别注明，不混算。</div>' +
       '</section>'
     ));

@@ -153,9 +153,12 @@ SD.views.todo = (function () {
           : '隐患整改完、巡检执行完、作业票完工、培训结束后，这里就清了。'
       }));
     } else {
+      /* ★ 2026-11-10：受限模式不能推进任务状态 —— 按钮直接渲染成禁用态 */
+      var canAct = SD.auth.can('data.write');
       list.forEach(function (item) {
         lb.appendChild(SD.comp.listItem.todo(item, {
           showDone: true,
+          canAct: canAct,
           onDone: function (it) { ctx.completeTodo(it); }
         }));
       });
@@ -172,6 +175,10 @@ SD.views.todo = (function () {
       '一键处理规则：隐患按「待整改 → 整改中 → 待验收 → 已闭环」推进；巡检直接标记完成（补默认执行记录，现场情况可回模块里补填）；' +
       '作业票按状态机推进（草稿 → 待审批 → 已批准 → 作业中 → 已完工，批准时自动记录审批人）；培训直接标记完成。' +
       '逾期 = 整改期限 &lt; 今天且未闭环（已批准延期的不再计逾期，单列延期跟进）。' +
+      (SD.auth.can('data.write')
+        ? ''
+        : '<br><b class="t-2">当前为受限模式</b>：本页只读，右下角一键处理按钮已锁定，' +
+          '要推进任务状态请点右上角「受限模式」输入六位密码解锁。') +
       '</section>'
     );
     host.appendChild(note);

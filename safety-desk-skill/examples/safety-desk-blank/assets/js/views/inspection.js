@@ -44,6 +44,15 @@ SD.views.inspection = (function () {
        完成时若没有执行记录会自动补一条默认记录（现场情况可随后补填） */
     { name: 'status', label: '状态', type: 'select', required: true, options: function () { return SD.dict.DICT.inspectStatus; }, def: 'planned' },
     { name: 'remark', label: '备注', type: 'textarea', full: true, rows: 2, placeholder: '可写巡检重点、携带工具等' },
+    /* 隐患类型 ★ 2026-11-10 新增：给「这次巡检发现的隐患」归类。
+       用途只有一处 —— 数据看板「隐患类型分布」按它出图（按有照片的巡检任务数统计）。
+       非必填：正常无异常的巡检不该被逼着编一个类型；没填的归「未分类」，
+       仍然计入（因为照片已经在），保证类型分布合计 = 有隐患照片的任务数。 */
+    {
+      name: 'hazardType', label: '隐患类型', type: 'select',
+      options: function () { return SD.dict.DICT.hazardType; },
+      help: '本次巡检发现的隐患属于哪一类；没发现隐患可留空。选了才会进数据看板「隐患类型分布」'
+    },
     /* 隐患照片 ★ 2026-11-10 更名：原「巡查照片」→「隐患照片」。
        更名的原因：巡检拍下来的照片本质就是隐患现场证据，数据看板要按部门
        汇总「隐患照片张数」作为隐患计数口径，叫「巡查照片」会跟统计口径脱节。
@@ -90,6 +99,7 @@ SD.views.inspection = (function () {
           planName: v.planName, type: v.type, area: v.area,
           dept: v.dept || '', executor: v.executor,
           scheduledDate: v.scheduledDate, remark: v.remark || '',
+          hazardType: v.hazardType || '',
           status: status,
           photos: v.photos || []
         };

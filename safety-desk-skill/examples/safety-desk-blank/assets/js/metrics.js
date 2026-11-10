@@ -343,13 +343,18 @@ SD.metrics = (function () {
        · 不排除任何任务状态：照片一旦上传即为现场证据，任务后续改期 / 取消也照算。
          若按状态排除，用户会看到列表里明明有照片、看板却不计数，属对不上账。
        · 没上传照片的任务不进任何口径（既不计张数，也不计任务数）。
+       · 隐患类型（★ 2026-11-10）：巡检表单新增 hazardType 字段，按「有照片的任务」分组，
+         **一条任务记一次隐患**（不是按照片张数 —— 照片是证据，任务是事件）；
+         没填类型的归「未分类」但仍计入，保证类型合计 = 有隐患照片的任务数。
 
      输出：{
        totalPhotos 总张数 · totalTasks 有照片的任务数
        byDept   [{dept, photos, tasks}] 按照片数降序
+       byType   [{type, tasks, photos}] 按任务数降序（看板「隐患类型分布」用）
        trend    { months:[12], depts:[{dept, data:[12], total}] } 近 12 个月按部门
      } */
   var NO_DEPT = '未指定部门';
+  var NO_TYPE = '未分类';
 
   function photoCountOf(t) {
     return Object.prototype.toString.call(t && t.photos) === '[object Array]' ? t.photos.length : 0;
@@ -366,6 +371,7 @@ SD.metrics = (function () {
     var totalPhotos = 0, totalTasks = 0;
     var byDept = {};
     var trendMap = {};
+    var byTypeMap = {};
 
     insp.forEach(function (t) {
       var n = photoCountOf(t);
@@ -379,6 +385,11 @@ SD.metrics = (function () {
       byDept[dept].photos += n;
       byDept[dept].tasks += 1;
 
+      var tp = t.hazardType || NO_TYPE;
+      byTypeMap[tp] = byTypeMap[tp] || { type: tp, tasks: 0, photos: 0 };
+      byTypeMap[tp].tasks += 1;
+      byTypeMap[tp].photos += n;
+
       if (!t.scheduledDate) return;
       var ym = U.ym(t.scheduledDate);
       if (months.indexOf(ym) < 0) return;
@@ -388,6 +399,9 @@ SD.metrics = (function () {
 
     var list = Object.keys(byDept).map(function (k) { return byDept[k]; })
       .sort(function (a, b) { return b.photos - a.photos || b.tasks - a.tasks; });
+
+    var typeList = Object.keys(byTypeMap).map(function (k) { return byTypeMap[k]; })
+      .sort(function (a, b) { return b.tasks - a.tasks || b.photos - a.photos; });
 
     var depts = Object.keys(trendMap).map(function (dept) {
       var m = trendMap[dept];
@@ -399,6 +413,7 @@ SD.metrics = (function () {
       totalPhotos: totalPhotos,
       totalTasks: totalTasks,
       byDept: list,
+      byType: typeList,
       trend: { months: months, depts: depts }
     };
   }

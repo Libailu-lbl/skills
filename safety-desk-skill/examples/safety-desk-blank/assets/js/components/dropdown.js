@@ -76,6 +76,8 @@ SD.comp.dropdown = (function () {
 
     U.on(el, 'click', '.dd-item', function (ev, btn) {
       var it = items[Number(btn.dataset.i)];
+      /* 禁用项不执行、也不关菜单 —— 否则「点了没反应还消失」比灰着更让人困惑 */
+      if (it && it.disabled) { ev.preventDefault(); ev.stopPropagation(); return; }
       close();
       if (it && opts.onPick) opts.onPick(it);
     });

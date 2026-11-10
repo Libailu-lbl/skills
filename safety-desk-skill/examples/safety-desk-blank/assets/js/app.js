@@ -342,7 +342,7 @@ SD.app = (function () {
     h.flow = h.flow || [];
     h.flow.push({
       at: s.today + ' ' + new Date().toTimeString().slice(0, 5),
-      by: '李佰陆', from: from, to: NAME[next], note: '待办区一键推进'
+      by: '王安全', from: from, to: NAME[next], note: '待办区一键推进'
     });
     applyLocal();
 
@@ -714,7 +714,7 @@ SD.app = (function () {
   }
 
   /* ---------------- 受限模式：拦下所有写操作 ---------------- */
-  var WRITE_SEL = '.btn.primary, .btn.danger, [data-act="edit"], [data-act="del"], [data-write], .sl-ev-add, .sl-ev-del';
+  var WRITE_SEL = '.btn.primary, .btn.danger, [data-act="edit"], [data-act="del"], [data-write], .sl-ev-add, .sl-ev-del, .todo-check';
   function installWriteGuard() {
     document.addEventListener('click', function (e) {
       if (SD.auth.can('data.write')) return;

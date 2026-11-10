@@ -56,10 +56,20 @@ SD.comp.listItem = (function () {
     if (item.dueDate) meta += ' ' + badge.tag('期限 ' + item.dueDate, 'calendar');
 
     var actTitle = ACT_TITLE[item.kind] || '标记完成';
+    /* ★ 2026-11-10：受限模式（未解锁安全员）**不能推进任务状态**。
+       这里把按钮渲染成 disabled —— 比「点了弹一句没权限」清楚，
+       用户一眼看出这条只能看不能动；同时 app.js 的写操作守卫也加了 .todo-check 兜底，
+       防止别处直接构造出可点的按钮。
+       opts.canAct 默认 true，只有明确传 false 才锁。 */
+    var canAct = opts.canAct !== false;
+    var lockTitle = '受限模式：推进任务状态需要安全员权限（点右上角「受限模式」输入六位密码解锁）';
     var el = U.h(
       '<div class="todo-item ' + (item.severity || 'general') + (isOverdue ? ' overdue' : '') + '">' +
         (opts.showDone !== false
-          ? '<button class="todo-check" title="' + U.esc(actTitle) + '" aria-label="' + U.esc(actTitle) + '">' + SD.icons.get('check', 15) + '</button>'
+          ? (canAct
+              ? '<button class="todo-check" title="' + U.esc(actTitle) + '" aria-label="' + U.esc(actTitle) + '">' + SD.icons.get('check', 15) + '</button>'
+              : '<button class="todo-check is-locked" title="' + U.esc(lockTitle) + '" aria-label="' + U.esc(lockTitle) + '"' +
+                ' aria-disabled="true" disabled>' + SD.icons.get('lock', 13) + '</button>')
           : '<span class="todo-check" style="border-style:dashed;cursor:default"></span>') +
         '<div class="body">' +
           '<div class="title">' + U.esc(item.title) + '</div>' +
@@ -69,7 +79,7 @@ SD.comp.listItem = (function () {
       '</div>'
     );
 
-    if (opts.showDone !== false && typeof opts.onDone === 'function') {
+    if (canAct && opts.showDone !== false && typeof opts.onDone === 'function') {
       var btn = el.querySelector('.todo-check');
       btn.addEventListener('click', function (e) { e.stopPropagation(); opts.onDone(item); });
     }

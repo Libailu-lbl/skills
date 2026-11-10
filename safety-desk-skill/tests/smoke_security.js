@@ -8,7 +8,7 @@
      ⑤ 专用密码正确 → 真的清空（标记数据消失）
      ⑥ 专用密码可单独修改；两次不一致 / 与登录密码相同 都被拒
      ⑦ 空闲自动锁定：默认 30 分钟、超时退回受限、有操作就重新计时、受限态不重复锁、配 0 可关闭
-     ⑧ 打印/预览里「巡检人员：」后面留出 38mm 签名位（带下划线）；导出 Excel 里留 10 个全角空格
+     ⑧ 打印/预览里「巡检人员：」后面留出 38mm 签名位（带下划线）；导出 Excel 里留 10 个全角空格\n     ⑨ 受限模式：待办勾选按钮锁定不可推进；交接班导出按钮锁定、绕过按钮也被入口守卫拦住；解锁后恢复
 */
 const { JSDOM, requestInterceptor, VirtualConsole } = require('jsdom');
 
@@ -263,7 +263,7 @@ function ok(name, cond, extra) {
   ok('顺序是 巡检人员：<空位> 班次：',
     /巡检人员：[\s\S]*班次：/.test(metaTxt) && metaTxt.indexOf('巡检人员：') < metaTxt.indexOf('班次：'),
     metaTxt.slice(0, 70));
-  ok('打印件里不出现具体姓名', metaTxt.indexOf('王安全') < 0);
+  ok('打印件里不出现具体姓名', metaTxt.indexOf('李佰陆') < 0);
   ov.querySelector('.js-sl-close').click();
   await wait(200);
 
@@ -280,8 +280,80 @@ function ok(name, cond, extra) {
     /* 10 个全角空格的签名位 + 2 个全角空格的分隔（与「班次：」之间） */
     ok('Excel 里「巡检人员：」后留 10 个全角空格签名位（≈38.8mm，外加 2 个分隔空格）',
       !!m && m[1] === '　　　　　　　　　　' + '　　', m && m[1].length);
-    ok('Excel 里不写姓名', sheet.indexOf('王安全') < 0);
+    ok('Excel 里不写姓名', sheet.indexOf('李佰陆') < 0);
   }
+
+  /* ---------- 9. 受限模式：待办不可推进、交接班不可导出（★ 2026-11-10） ---------- */
+  console.log('== 9. 受限模式：待办不可推进 / 交接班不可导出 ==');
+
+  /* 上一节把数据清空过，这里自己造一条未闭环隐患当待办 */
+  const dd = SD.store.data();
+  dd.hazards = [{
+    id: 'HZ-R1', code: 'FZYH-7000101', title: '受限模式测试隐患', dept: '生产一部',
+    severity: 'general', type: '消防', status: 'pending',
+    foundDate: SD.utils.today(), dueDate: SD.utils.shift(SD.utils.today(), 3),
+    owner: '测试员', desc: '', photos: []
+  }];
+  SD.store.save();
+
+  SD.auth.set('restricted');
+  await SD.app.reload();
+  await wait(400);
+
+  /* 8.1 待办任务：勾选按钮锁定 */
+  await go('todo');
+  const todoChecks = Array.from(view().querySelectorAll('.todo-check'));
+  ok('待办列表渲染出条目', todoChecks.length > 0, todoChecks.length);
+  ok('受限模式下所有勾选按钮 disabled',
+    todoChecks.length > 0 && todoChecks.every(b => b.disabled === true),
+    todoChecks.filter(b => !b.disabled).length + ' 个仍可点');
+  ok('锁定按钮有 is-locked 标记与权限说明',
+    !!todoChecks[0] && todoChecks[0].classList.contains('is-locked') &&
+    /受限模式/.test(todoChecks[0].getAttribute('title')),
+    todoChecks[0] && todoChecks[0].getAttribute('title'));
+  /* 实证：点一下锁定的按钮，底层数据不应有任何变化 */
+  const hzBefore = JSON.stringify((SD.store.data().hazards || [])[0] || {});
+  if (todoChecks[0]) todoChecks[0].dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  await wait(400);
+  const hzAfter = JSON.stringify((SD.store.data().hazards || [])[0] || {});
+  ok('点锁定按钮后隐患状态一条没变', hzBefore === hzAfter,
+    hzBefore.slice(0, 40) + ' → ' + hzAfter.slice(0, 40));
+  ok('页面口径说明写明只读与解锁方式',
+    /当前为受限模式/.test(view().textContent) && /输入六位密码解锁/.test(view().textContent));
+
+  /* 8.2 交接班记录：导出锁定 */
+  await go('shiftLog');
+  const xlsBtn = view().querySelector('.js-sl-xls');
+  ok('交接班导出按钮存在', !!xlsBtn);
+  ok('受限模式下导出按钮 disabled', !!xlsBtn && xlsBtn.disabled === true);
+  ok('导出按钮 title 说明需要安全员权限',
+    !!xlsBtn && /受限模式/.test(xlsBtn.getAttribute('title')), xlsBtn && xlsBtn.getAttribute('title'));
+  ok('按钮旁有「导出已锁定」文字提示', /导出已锁定/.test(view().textContent));
+  ok('打印按钮仍然可用（纸面留痕不受限）',
+    Array.from(view().querySelectorAll('.btn')).some(b => /打印/.test(b.textContent) && !b.disabled));
+
+  /* 8.3 绕过按钮（强行解开 disabled）→ exportXlsx 入口守卫仍要拦住 */
+  let blobCalls = 0;
+  const origCreate = win.URL.createObjectURL;
+  win.URL.createObjectURL = function () { blobCalls++; return 'blob:stub'; };
+  if (xlsBtn) { xlsBtn.disabled = false; xlsBtn.click(); }
+  await wait(600);
+  ok('绕过按钮直接触发也被拦，没有生成任何文件', blobCalls === 0, blobCalls + ' 次 createObjectURL');
+  win.URL.createObjectURL = origCreate;
+
+  /* 8.4 锁回来 */
+  SD.auth.set('safety_officer');
+  await SD.app.reload();
+  await wait(400);
+  await go('shiftLog');
+  const xlsBtn2 = view().querySelector('.js-sl-xls');
+  ok('解锁后交接班导出恢复可点', !!xlsBtn2 && xlsBtn2.disabled === false,
+    xlsBtn2 && xlsBtn2.disabled);
+  await go('todo');
+  const todoChecks2 = Array.from(view().querySelectorAll('.todo-check'));
+  ok('解锁后待办勾选按钮恢复可点',
+    todoChecks2.length > 0 && todoChecks2.every(b => b.disabled === false),
+    todoChecks2.filter(b => b.disabled).length + ' 个仍锁着');
 
   console.log('errors:', errs.slice(0, 4));
   console.log('结果：通过 ' + P + ' / 失败 ' + F);
