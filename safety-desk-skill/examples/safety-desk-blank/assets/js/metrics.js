@@ -328,6 +328,81 @@ SD.metrics = (function () {
     return { months: months, depts: depts };
   }
 
+  /* ---------------- 巡检隐患照片（看板计数口径）----------------
+     ★ 2026-11-10：巡检表单里「巡查照片」统一更名为「隐患照片」——
+       它承载的就是巡检过程中发现的隐患现场证据。看板的「隐患计数」因此改为
+       **按部门汇总巡检任务上传的隐患照片张数**，不再数隐患台账条数。
+
+     口径（看板「口径说明」与此处必须同步，改一处就要改另一处）：
+       · 统计对象：data.inspections[].photos 的**张数**。
+         存储键仍是 photos（只是显示名改了），因此本功能上线前的老巡检记录
+         不需要任何迁移，历史照片照常计数。
+       · 部门归属：取巡检任务的 dept（责任部门）；空值统一归「未指定部门」，
+         保证「各部门合计 === 总照片数」，账能对上，也提醒补填部门。
+       · 时间归属：按 scheduledDate（计划日期）分月，与巡检列表「归年」口径一致。
+       · 不排除任何任务状态：照片一旦上传即为现场证据，任务后续改期 / 取消也照算。
+         若按状态排除，用户会看到列表里明明有照片、看板却不计数，属对不上账。
+       · 没上传照片的任务不进任何口径（既不计张数，也不计任务数）。
+
+     输出：{
+       totalPhotos 总张数 · totalTasks 有照片的任务数
+       byDept   [{dept, photos, tasks}] 按照片数降序
+       trend    { months:[12], depts:[{dept, data:[12], total}] } 近 12 个月按部门
+     } */
+  var NO_DEPT = '未指定部门';
+
+  function photoCountOf(t) {
+    return Object.prototype.toString.call(t && t.photos) === '[object Array]' ? t.photos.length : 0;
+  }
+
+  function inspectionPhotos(data, today) {
+    today = today || U.today();
+    var insp = (data && data.inspections) || [];
+
+    var months = [];
+    var thisYM = U.ym(today);
+    for (var i = 11; i >= 0; i--) months.push(U.shiftYM(thisYM, -i));
+
+    var totalPhotos = 0, totalTasks = 0;
+    var byDept = {};
+    var trendMap = {};
+
+    insp.forEach(function (t) {
+      var n = photoCountOf(t);
+      if (!n) return;
+      var dept = t.dept || NO_DEPT;
+
+      totalPhotos += n;
+      totalTasks += 1;
+
+      byDept[dept] = byDept[dept] || { dept: dept, photos: 0, tasks: 0 };
+      byDept[dept].photos += n;
+      byDept[dept].tasks += 1;
+
+      if (!t.scheduledDate) return;
+      var ym = U.ym(t.scheduledDate);
+      if (months.indexOf(ym) < 0) return;
+      trendMap[dept] = trendMap[dept] || {};
+      trendMap[dept][ym] = (trendMap[dept][ym] || 0) + n;
+    });
+
+    var list = Object.keys(byDept).map(function (k) { return byDept[k]; })
+      .sort(function (a, b) { return b.photos - a.photos || b.tasks - a.tasks; });
+
+    var depts = Object.keys(trendMap).map(function (dept) {
+      var m = trendMap[dept];
+      var series = months.map(function (ym) { return m[ym] || 0; });
+      return { dept: dept, data: series, total: series.reduce(function (a, b) { return a + b; }, 0) };
+    }).sort(function (a, b) { return b.total - a.total; });
+
+    return {
+      totalPhotos: totalPhotos,
+      totalTasks: totalTasks,
+      byDept: list,
+      trend: { months: months, depts: depts }
+    };
+  }
+
   /* ---------------- 看板聚合 ---------------- */
   /** 各部门整改率 = 已闭环 / 该部门隐患总数 */
   function deptRates(hazards) {    var g = U.groupBy(hazards || [], function (h) { return h.dept || '未指定'; });
@@ -472,6 +547,8 @@ SD.metrics = (function () {
       keyWorks: (data.keyWorks || []).slice(),       /* 安全重要工作看板（★ 2026-11-10） */
       deptRates: deptRates(live),
       deptTrend: deptTrend(data, today),
+      /* ★ 2026-11-10：看板隐患计数的新口径 —— 巡检任务上传的隐患照片，按部门汇总 */
+      inspectionPhotos: inspectionPhotos(data, today),
       typeDist: typeDist(live),
       trend: data.trend || [],
 
@@ -523,6 +600,8 @@ SD.metrics = (function () {
     buildTodos: buildTodos,
     deptRates: deptRates,
     deptTrend: deptTrend,
+    inspectionPhotos: inspectionPhotos,
+    NO_DEPT: NO_DEPT,
     typeDist: typeDist,
     severityDist: severityDist,
     summarize: summarize

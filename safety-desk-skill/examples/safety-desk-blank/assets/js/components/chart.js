@@ -137,6 +137,9 @@ SD.comp.chart = (function () {
    * @param {object} o
    *   items [{name, rate(0~1), label}]
    *   max   显示条数（默认全部）
+   *   neutral  true 时不着语义色（红/橙/主色全部改为主色）
+   *            —— 给「数量类」条形用：照片张数少的部门并不代表做得差，
+   *            沿用整改率的红橙语义会误导，所以这类图一律中性色。
    */
   function bars(o) {
     o = o || {};
@@ -144,8 +147,8 @@ SD.comp.chart = (function () {
     if (!items.length) return '<p class="t-3 t-sm">暂无数据</p>';
     return '<div class="bars">' + items.map(function (it) {
       var pct = it.rate == null ? 0 : Math.max(0, Math.min(1, it.rate)) * 100;
-      // 整改率 <60% 标红，60%~85% 标橙，其余主色
-      var cls = pct < 60 ? 'low' : (pct < 85 ? 'mid' : '');
+      // 整改率 <60% 标红，60%~85% 标橙，其余主色；neutral 时一律主色
+      var cls = o.neutral ? '' : (pct < 60 ? 'low' : (pct < 85 ? 'mid' : ''));
       return '<div class="bar-row">' +
         '<span class="name" title="' + U.esc(it.name) + '">' + U.esc(it.name) + '</span>' +
         '<span class="bar-track"><i class="' + cls + '" style="width:' + pct.toFixed(1) + '%"></i></span>' +

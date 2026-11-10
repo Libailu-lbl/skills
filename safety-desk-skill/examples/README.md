@@ -25,7 +25,7 @@ node tests/serve.js 8124 examples/safety-desk-blank
 ## 自检
 
 ```bash
-bash scripts/run_all_tests.sh        # 16 套 / 1096 项，全绿
+bash scripts/run_all_tests.sh        # 17 套 / 1132 项，全绿
 ```
 
 ## 值得看的几处

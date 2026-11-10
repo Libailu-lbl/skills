@@ -132,7 +132,14 @@ function ok(name, cond, extra) {
   ok('概览不再有「今天要处理」旧卡片', view().textContent.indexOf('今天要处理') < 0);
   await go('dashboard');
   ok('看板「暂无趋势数据」空态', view().textContent.indexOf('暂无趋势数据') >= 0);
-  ok('看板「暂无部门趋势数据」空态', view().textContent.indexOf('暂无部门趋势数据') >= 0);
+  /* ★ 2026-11-10：各部门趋势改为「隐患照片」口径，空态文案随之变更；
+     另新增「各部门隐患照片」汇总区块，空态同为「暂无隐患照片」 */
+  ok('看板「暂无隐患照片」空态（照片口径）', view().textContent.indexOf('暂无隐患照片') >= 0,
+    view().textContent.replace(/\s+/g, ' ').slice(0, 120));
+  ok('看板新增「各部门隐患照片」区块',
+    Array.from(view().querySelectorAll('h3')).some(h => h.textContent.trim() === '各部门隐患照片'));
+  ok('看板 KPI 首卡改为「隐患照片」',
+    /隐患照片/.test((view().querySelector('.grid.cols-4 > *') || {}).textContent || ''));
   ok('看板「暂无部门数据」空态', view().textContent.indexOf('暂无部门数据') >= 0);
   await go('notice');
   ok('通知页说明卡指向侧栏快捷入口',

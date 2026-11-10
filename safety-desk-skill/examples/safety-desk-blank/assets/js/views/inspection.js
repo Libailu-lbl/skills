@@ -44,12 +44,22 @@ SD.views.inspection = (function () {
        完成时若没有执行记录会自动补一条默认记录（现场情况可随后补填） */
     { name: 'status', label: '状态', type: 'select', required: true, options: function () { return SD.dict.DICT.inspectStatus; }, def: 'planned' },
     { name: 'remark', label: '备注', type: 'textarea', full: true, rows: 2, placeholder: '可写巡检重点、携带工具等' },
-    /* 巡查照片：登记 / 编辑时上传，列表里点「区域」即可看大图（与隐患标题同一套交互）
+    /* 隐患照片 ★ 2026-11-10 更名：原「巡查照片」→「隐患照片」。
+       更名的原因：巡检拍下来的照片本质就是隐患现场证据，数据看板要按部门
+       汇总「隐患照片张数」作为隐患计数口径，叫「巡查照片」会跟统计口径脱节。
+
+       ⚠️ 存储键仍是 photos，**不要改**：
+         存量巡检记录、导入的备份、跨机迁移指纹里都是 photos；
+         改键名要额外做数据迁移与兼容读取，收益为零。
+         显示名改这一处、统计口径在 metrics.inspectionPhotos 里统一。
+
+       登记 / 编辑时上传，列表里点「区域」即可看大图（与隐患标题同一套交互）
        ★ 2026-10-30 起单次最多 18 张（原 6 张）；存储走 photoVault（原图外置到 IndexedDB），
          所以放宽张数不会把 localStorage 撑爆，列表与打印只读引用 */
     {
-      name: 'photos', label: '巡查照片', type: 'photos', full: true, max: 18,
-      help: '最多 18 张，可一次性多选；原图保存（大图自动外置，不压缩），列表里点「区域」即可查看'
+      name: 'photos', label: '隐患照片', type: 'photos', full: true, max: 18,
+      help: '最多 18 张，可一次性多选；原图保存（大图自动外置，不压缩）。' +
+            '张数会计入数据看板「各部门隐患照片」统计；与「发现隐患数」不是同一口径（那个记条数）'
     }
   ];
 
@@ -195,7 +205,7 @@ SD.views.inspection = (function () {
         '<label class="field full"><span>现场情况 / 发现</span><div>' + U.esc(r.findings || '—') + '</div></label>' +
         '<label class="field"><span>发现隐患数</span><div>' + (t.hazardCount || 0) + ' 条</div></label>' +
         '<label class="field"><span>现场签字</span><div>' + U.esc(r.signedBy || '—') + '　' + U.esc(r.signedAt || '') + '</div></label>' +
-        '<label class="field full"><span>巡查照片</span><div>' +
+        '<label class="field full"><span>隐患照片</span><div>' +
           (t.photos && t.photos.length
             ? '<button type="button" class="btn sm js-insp-ph" data-id="' + t.id + '">查看 ' + t.photos.length + ' 张照片</button>'
             : '<span class="t-3">—（登记 / 编辑巡检时可添加）</span>') +
@@ -384,13 +394,13 @@ SD.views.inspection = (function () {
         }
       },
       { key: 'type', title: '类型', sortable: true, render: function (r) { return B().tag(r.type); } },
-      /* 区域：与「类型」一样单独一列；有照片时区域名可点，点开看巡查照片大图 */
+      /* 区域：与「类型」一样单独一列；有照片时区域名可点，点开看隐患照片大图 */
       {
         key: 'area', title: '区域',
         render: function (r) {
           var n = (r.photos || []).length;
           return '<div class="cell-main js-insp-area' + (n ? ' link' : '') + '" data-id="' + r.id + '" ' +
-              'title="' + (n ? '点击查看巡查照片（' + n + ' 张）' : '这条巡检还没有照片') + '">' +
+              'title="' + (n ? '点击查看隐患照片（' + n + ' 张）' : '这条巡检还没有隐患照片') + '">' +
             U.esc(r.area || '—') +
             (n ? '<span class="hz-photo-tag">照片 ' + n + '</span>' : '') +
           '</div>';
@@ -461,14 +471,14 @@ SD.views.inspection = (function () {
       });
     });
 
-    /* ---------- 点「区域」看巡查照片 ----------
-       照片在新增 / 编辑表单里上传（≤6 张），与隐患标题、培训名称、作业票作业类型
+    /* ---------- 点「区域」看隐患照片 ----------
+       照片在新增 / 编辑表单里上传（≤18 张），与隐患标题、培训名称、作业票作业类型
        同一套交互；无照片时点名没反应（title 已说明）。 */
     U.on(table, 'click', '.js-insp-area', function (e, el) {
       var cur = SD.app.state.summary.inspections.filter(function (x) { return x.id === el.dataset.id; })[0];
       if (!cur) return;
       var ph = cur.photos || [];
-      if (!ph.length) { U.toast('这条巡检还没有照片，新增 / 编辑巡检时可添加'); return; }
+      if (!ph.length) { U.toast('这条巡检还没有隐患照片，新增 / 编辑巡检时可添加'); return; }
       SD.comp.lightbox.open(ph, 0, { title: cur.code + ' ' + cur.area });
     });
 
