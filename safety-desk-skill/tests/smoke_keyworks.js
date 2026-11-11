@@ -267,14 +267,78 @@ function ok(name, cond, extra) {
 
   /* ================= 10. 受限模式 ================= */
   console.log('== 10. 受限模式 ==');
+  /* 先造一条「待开始」，用来验推进锁定（前面几条已被推完 / 删掉） */
+  await SD.api.createKeyWork({
+    title: '受限模式推进锁定测试', owner: '测试员', cat: '隐患整改',
+    pri: 'mid', status: 'todo', due: SD.utils.shift(TODAY, 3), note: '',
+    createdAt: new Date().toISOString()
+  });
+  const lockId = (store().filter(t => /受限模式推进锁定测试/.test(t.title))[0] || {}).id;
+
   SD.auth.set('restricted');
   await SD.app.reload(); await wait(400);
+  await openOverview();
+
   const n0 = store().length;
   click(addBtn()); await wait(400);
   ok('受限模式下点「新增事项」不弹表单', !topModal());
   ok('受限模式下不产生新记录', store().length === n0, n0 + ' → ' + store().length);
+
+  /* ★ 2026-11-11（用户要求）：受限模式下不能推进状态 */
+  const lockCard = () => doc.querySelector('#view .kw-item[data-id="' + lockId + '"]');
+  const lockAdv = () => doc.querySelector('#view .kw-adv[data-id="' + lockId + '"]');
+  ok('受限时卡片上仍能看到推进按钮（功能在、只是锁着）', !!lockAdv());
+  ok('受限时推进按钮 disabled', !!lockAdv() && lockAdv().disabled === true);
+  ok('受限时推进按钮带 is-locked + 小锁图标',
+    !!lockAdv() && lockAdv().classList.contains('is-locked') && !!lockAdv().querySelector('svg'),
+    lockAdv() && lockAdv().className);
+  ok('受限时推进按钮 title 说明需要安全员权限',
+    !!lockAdv() && /受限模式/.test(lockAdv().getAttribute('title')),
+    lockAdv() && lockAdv().getAttribute('title'));
+  const lockBar = doc.querySelector('#view .kw-lock');
+  ok('受限时看板上方出现锁定说明条', !!lockBar && lockBar.hidden === false);
+  ok('说明条写明「推进状态」被锁 + 解锁方式',
+    !!lockBar && /推进状态/.test(lockBar.textContent) && /右上角/.test(lockBar.textContent),
+    lockBar ? lockBar.textContent.replace(/\s+/g, ' ').slice(0, 60) : '无');
+  ok('受限时卡片 draggable=false（拖不动）',
+    !!lockCard() && lockCard().getAttribute('draggable') === 'false',
+    lockCard() && lockCard().getAttribute('draggable'));
+  ok('受限时副标题也提示「不能推进」',
+    /不能推进/.test(sec().querySelector('.card-head .sub').textContent),
+    sec().querySelector('.card-head .sub').textContent);
+
+  /* 绕过 disabled 直接点 → 状态不许变 */
+  const st0 = (store().filter(t => t.id === lockId)[0] || {}).status;
+  if (lockAdv()) { lockAdv().disabled = false; click(lockAdv()); }
+  await wait(600);
+  const st1 = (store().filter(t => t.id === lockId)[0] || {}).status;
+  ok('强行解开 disabled 再点也不推进', st1 === st0, st0 + ' → ' + st1);
+
+  /* 拖拽：dragstart 被 preventDefault，drop 也改不动 */
+  const dragEv = new win.Event('dragstart', { bubbles: true, cancelable: true });
+  if (lockCard()) lockCard().dispatchEvent(dragEv);
+  await wait(150);
+  ok('受限时 dragstart 被取消（拖不动卡片）', dragEv.defaultPrevented === true);
+  const dropEv = new win.Event('drop', { bubbles: true, cancelable: true });
+  const doingCol = colBy('doing');
+  if (doingCol) doingCol.dispatchEvent(dropEv);
+  await wait(500);
+  ok('受限时 drop 也改不动状态', (store().filter(t => t.id === lockId)[0] || {}).status === st0,
+    (store().filter(t => t.id === lockId)[0] || {}).status);
+
+  /* 解锁后恢复 */
   SD.auth.set('safety_officer');
   await SD.app.reload(); await wait(400);
+  await openOverview();
+  ok('解锁后推进按钮恢复可点',
+    !!lockAdv() && lockAdv().disabled !== true && !lockAdv().classList.contains('is-locked'));
+  ok('解锁后锁定说明条隐藏', !doc.querySelector('#view .kw-lock') || doc.querySelector('#view .kw-lock').hidden === true);
+  ok('解锁后卡片恢复可拖', !!lockCard() && lockCard().getAttribute('draggable') === 'true');
+  const st2 = (store().filter(t => t.id === lockId)[0] || {}).status;
+  if (lockAdv()) { click(lockAdv()); }
+  await wait(700);
+  ok('解锁后点推进能正常改状态', (store().filter(t => t.id === lockId)[0] || {}).status !== st2,
+    st2 + ' → ' + (store().filter(t => t.id === lockId)[0] || {}).status);
 
   /* ================= 收尾 ================= */
   ok('全程无 JS 报错', errors.length === 0, errors.slice(0, 3).join(' | '));

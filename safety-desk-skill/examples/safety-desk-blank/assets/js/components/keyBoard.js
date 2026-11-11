@@ -24,6 +24,12 @@
      · 新增 / 编辑：formDialog；编辑弹窗左下角带「删除」（危险色，需安全员权限）
      · 推进：卡片底部「推进到「X」→」，状态单向前进，走完就是已闭环
      · 拖动：桌面端把卡片拖进别的列即改状态（移动端不依赖拖拽，用推进按钮）
+       ★ 2026-11-11：**受限模式不允许推进状态**（用户要求）——
+         推进按钮、拖拽换列两条路一起锁，与「待办任务」页的锁定口径一致：
+           ① 渲染：按钮 disabled + is-locked（虚线边+灰字）+ 小锁 + title 说明；卡片 draggable=false
+           ② 事件：click / dragstart 直接不往下走（不是拦一次报个错就完）
+           ③ 函数入口：advance() / moveTo() 各判一次权限（程序内直接调也改不动）
+         受限时看板上方多一条说明条，手机上没有 hover 也知道为什么点不了。
      · 筛选：关键词 / 负责人 / 类别 / 优先级 / 仅看逾期
        条件存在 ctx.state.filters.keyWorks，切页、改数据重绘都不丢
        （与其它列表页的筛选口径一致：只存内存，刷新页面即复位）
@@ -136,14 +142,24 @@ SD.comp.keyBoard = (function () {
     });
   }
 
-  function cardHtml(t, today) {
+  function cardHtml(t, today, canAdv) {
     var p = priOf(t.pri);
     var d = dueOf(t, today);
     var i = statusIndex(t.status);
     var next = i < STATUS.length - 1 ? STATUS[i + 1] : null;
     var done = t.status === 'done';
 
-    return '<article class="kw-item' + (done ? ' done' : '') + '" draggable="true"' +
+    /* 推进按钮：受限时禁用 + is-locked + 小锁 + title（不禁用只提示，等于让人白点一次） */
+    var advHtml = done
+      ? '<span class="kw-done">' + SD.icons.get('check', 12) + '已闭环</span>'
+      : (canAdv
+          ? '<button class="kw-adv" type="button" data-act="advance" data-id="' + U.esc(t.id) + '">' +
+            '推进到「' + next.name + '」→</button>'
+          : '<button class="kw-adv is-locked" type="button" data-act="advance" data-id="' + U.esc(t.id) + '"' +
+            ' disabled aria-disabled="true" title="受限模式：推进状态需要安全员权限，点右上角「受限模式」输入六位密码解锁">' +
+            SD.icons.get('lock', 11) + '推进到「' + next.name + '」</button>');
+
+    return '<article class="kw-item' + (done ? ' done' : '') + '" draggable="' + (canAdv ? 'true' : 'false') + '"' +
         ' data-id="' + U.esc(t.id) + '" style="--p:' + p.color + '">' +
         '<div class="kw-tags">' +
           '<span class="kw-tag cat">' + U.esc(t.cat || '未分类') + '</span>' +
@@ -156,12 +172,7 @@ SD.comp.keyBoard = (function () {
           '<span class="kw-owner">' + U.esc(t.owner || '未指派') + '</span>' +
           '<span class="kw-due ' + d.cls + '">' + SD.icons.get('clock', 11) + U.esc(d.txt) + '</span>' +
         '</div>' +
-        '<div class="kw-foot">' +
-          (done
-            ? '<span class="kw-done">' + SD.icons.get('check', 12) + '已闭环</span>'
-            : '<button class="kw-adv" type="button" data-act="advance" data-id="' + U.esc(t.id) + '">' +
-              '推进到「' + next.name + '」→</button>') +
-        '</div>' +
+        '<div class="kw-foot">' + advHtml + '</div>' +
       '</article>';
   }
 
@@ -244,7 +255,14 @@ SD.comp.keyBoard = (function () {
     });
   }
 
+  /* ---------------- 推进状态 ----------------
+     ★ 2026-11-11：受限模式不允许推进（用户要求）。
+     这一道是**函数入口守卫**：按钮已禁用，但程序内直接调 / 别处复用也会被挡住。 */
   function advance(ctx, id) {
+    if (!SD.auth.can('data.write')) {
+      U.toast('受限模式：推进状态需要安全员权限。点右上角「受限模式」输入六位密码解锁。', 'err');
+      return;
+    }
     var t = findById(ctx, id);
     if (!t) return;
     var i = statusIndex(t.status);
@@ -257,6 +275,10 @@ SD.comp.keyBoard = (function () {
   }
 
   function moveTo(ctx, id, st) {
+    if (!SD.auth.can('data.write')) {
+      U.toast('受限模式：拖拽换列需要安全员权限。点右上角「受限模式」输入六位密码解锁。', 'err');
+      return;
+    }
     var t = findById(ctx, id);
     if (!t || !st || t.status === st) return;
     SD.api.updateKeyWork(t.id, { status: st }).then(function () {
@@ -283,6 +305,7 @@ SD.comp.keyBoard = (function () {
         '</div>' +
         '<div class="kw-sum"></div>' +
         '<div class="kw-hint" hidden></div>' +
+        '<div class="kw-lock" hidden></div>' +
         '<div class="filters kw-filters"></div>' +
         '<div class="kw-board"></div>' +
       '</section>'
@@ -290,8 +313,21 @@ SD.comp.keyBoard = (function () {
 
     var sumBox = sec.querySelector('.kw-sum');
     var hintBox = sec.querySelector('.kw-hint');
+    var lockBox = sec.querySelector('.kw-lock');
     var fBox = sec.querySelector('.kw-filters');
     var board = sec.querySelector('.kw-board');
+
+    /* 受限模式：推进 / 拖拽 / 新增编辑删除都要安全员权限。
+       这里只算一次「能不能推」——角色切换后 app 会整体重渲染，不需要监听。 */
+    var canAdv = SD.auth.can('data.write');
+    if (!canAdv) {
+      lockBox.hidden = false;
+      lockBox.innerHTML = SD.icons.get('lock', 13) +
+        '<span><b>受限模式</b>：可查看与筛选；<b>推进状态、拖拽换列</b>以及新增 / 编辑 / 删除都已锁定。' +
+        '要推进请点右上角「受限模式」输入六位密码解锁。</span>';
+      sec.querySelector('.card-head .sub').textContent =
+        '按「待开始 → 进行中 → 待验收 → 已完成」推进；逾期标红（受限模式下只能看，不能推进）';
+    }
 
     /* 新增：data-write 让受限模式的写操作守卫能拦住（和登记隐患同一套口径） */
     var addBtn = U.h('<button class="btn primary sm" data-write type="button">' +
@@ -379,7 +415,7 @@ SD.comp.keyBoard = (function () {
           '</div>' +
           '<div class="kw-col-body">' +
             (items.length
-              ? items.map(function (t) { return cardHtml(t, today); }).join('')
+              ? items.map(function (t) { return cardHtml(t, today, canAdv); }).join('')
               : '<div class="kw-empty">暂无事项</div>') +
           '</div>' +
         '</section>';
@@ -398,6 +434,12 @@ SD.comp.keyBoard = (function () {
       var adv = e.target.closest('[data-act="advance"]');
       if (adv) {
         e.stopPropagation();
+        /* 受限：按钮本身是 disabled（点不出事件），这里兜的是「有人强解 disabled」
+           —— 不弹表单、不改状态，只说一句要解锁 */
+        if (!SD.auth.can('data.write')) {
+          U.toast('受限模式：推进状态需要安全员权限。点右上角「受限模式」输入六位密码解锁。', 'err');
+          return;
+        }
         advance(ctx, adv.dataset.id);
         return;
       }
@@ -410,6 +452,11 @@ SD.comp.keyBoard = (function () {
     /* ---- 拖动换列（桌面端；触屏用推进按钮，不强依赖拖拽） ---- */
     var dragId = null;
     board.addEventListener('dragstart', function (e) {
+      /* 受限：卡片 draggable=false 一般不触发；真触发了也不许拖 */
+      if (!SD.auth.can('data.write')) {
+        e.preventDefault();
+        return;
+      }
       var card = e.target.closest('.kw-item');
       if (!card) return;
       dragId = card.dataset.id;

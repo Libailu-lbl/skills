@@ -259,6 +259,99 @@ function ok(name, cond, extra) {
     await wait(200);
   }
 
+  /* ================= 12. 整改照片 / 整改日期（★ 2026-11-11 新增） ================= */
+  console.log('== 12. 编辑表单新增「整改日期」「整改照片」 ==');
+  await go('inspection');
+  /* 先切到「全部」，确保列表里有行可编辑（默认是本周） */
+  const allChip = Array.from(view().querySelectorAll('.chip')).find(x => x.textContent.trim() === '全部');
+  if (allChip) { allChip.dispatchEvent(new win.MouseEvent('click', { bubbles: true })); await wait(400); }
+
+  const opsBtn = view().querySelector('[data-act="iops"]');
+  ok('列表行有「操作 ▾」入口', !!opsBtn);
+  if (opsBtn) {
+    opsBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    await wait(300);
+    const editItem = Array.from(doc.querySelectorAll('.dd-item')).find(x => x.textContent.trim() === '编辑');
+    ok('菜单里有「编辑」', !!editItem);
+    if (editItem) { editItem.dispatchEvent(new win.MouseEvent('click', { bubbles: true })); await wait(450); }
+  }
+
+  const em = Array.from(doc.querySelectorAll('.mask .modal')).pop();
+  const emLabels = em ? Array.from(em.querySelectorAll('.field > span, label > span')).map(x => x.textContent.trim()) : [];
+  ok('编辑巡检任务弹窗已打开', !!em, emLabels.join('/'));
+  ok('表单有「整改日期」字段', emLabels.indexOf('整改日期') >= 0, emLabels.join('/'));
+  ok('表单有「整改照片」字段', emLabels.indexOf('整改照片') >= 0, emLabels.join('/'));
+
+  const fixDateEl = em ? em.querySelector('#ff_fixDate') : null;
+  const fixSlot = em ? em.querySelector('#ff_fixPhotos') : null;
+  const hzSlot = em ? em.querySelector('#ff_photos') : null;
+  ok('整改日期是日期控件（type=date）', !!fixDateEl && fixDateEl.type === 'date', fixDateEl && fixDateEl.type);
+  ok('整改日期非必填', !!fixDateEl && !fixDateEl.closest('.field, label').classList.contains('req'));
+  ok('整改照片控件上限 18 张', !!fixSlot && fixSlot.getAttribute('data-max') === '18',
+    fixSlot ? fixSlot.getAttribute('data-max') : '无控件');
+  ok('整改照片与隐患照片是两个独立控件（不共用 photos 键）',
+    !!hzSlot && !!fixSlot && hzSlot !== fixSlot);
+  /* 老记录（落库里没有 fixDate / fixPhotos）打开编辑：空值、不报错 */
+  ok('老记录打开编辑：整改日期为空', !!fixDateEl && fixDateEl.value === '', fixDateEl && fixDateEl.value);
+  ok('老记录打开编辑：整改照片为空数组', !!fixSlot && !!fixSlot._ph && fixSlot._ph.get().length === 0,
+    fixSlot && fixSlot._ph ? fixSlot._ph.get().length : '未挂载');
+
+  /* 填值 → 保存 → 验落库 */
+  if (fixDateEl && fixSlot && fixSlot._ph && hzSlot && hzSlot._ph) {
+    const editId = (SD.store.data().inspections[0] || {}).id;
+    /* 种子数据用的是 7000xxx 这类「格式不合规」的测试编号（只读用），
+       真要提交得先换成合法格式，否则会被编号校验拦下（这本身是正确行为） */
+    const codeEl = em.querySelector('#ff_code');
+    if (codeEl) codeEl.value = 'FZXJ-2026-001';
+    fixDateEl.value = d10;
+    fixSlot._ph.set(shot(2));      // 整改照片 2 张
+    hzSlot._ph.set(shot(3));       // 隐患照片 3 张
+    const okBtn = em.querySelector('.js-ok');
+    if (okBtn) { okBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true })); await wait(900); }
+    const rec = SD.store.data().inspections.filter(t => t.id === editId)[0] || {};
+    ok('整改日期已落库', rec.fixDate === d10, rec.fixDate);
+    ok('整改照片已落库（2 张）', Array.isArray(rec.fixPhotos) && rec.fixPhotos.length === 2,
+      Array.isArray(rec.fixPhotos) ? rec.fixPhotos.length : rec.fixPhotos);
+    ok('隐患照片没被串改（仍是 3 张）', Array.isArray(rec.photos) && rec.photos.length === 3,
+      Array.isArray(rec.photos) ? rec.photos.length : rec.photos);
+    ok('两套照片内容不同（各存各的）',
+      JSON.stringify(rec.fixPhotos) !== JSON.stringify(rec.photos));
+
+    /* 看板口径：整改照片**不进**「隐患照片」统计 ——
+       用「总张数 == photos 张数，且 != photos + fixPhotos」判定，不依赖种子数据的绝对数 */
+    const ip2 = SD.app.state.summary.inspectionPhotos;
+    const sumAll = SD.store.data().inspections.reduce(function (n, t) {
+      return n + (t.photos || []).length;
+    }, 0);
+    ok('看板总张数 = 各任务 photos 张数之和（不含整改照片）', ip2.totalPhotos === sumAll,
+      ip2.totalPhotos + ' vs ' + sumAll);
+    ok('看板总张数 ≠ photos + 整改照片（没被数两遍）',
+      ip2.totalPhotos !== sumAll + 2, ip2.totalPhotos);
+    ok('有照片任务数不受整改照片影响',
+      ip2.totalTasks === SD.store.data().inspections.filter(t => (t.photos || []).length).length,
+      ip2.totalTasks);
+  }
+
+  /* 执行记录弹窗里能看到整改两件套 */
+  await go('inspection');
+  const doneOps = view().querySelector('[data-act="iops"]');
+  if (doneOps) {
+    doneOps.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    await wait(300);
+    const recItem = Array.from(doc.querySelectorAll('.dd-item')).find(x => /执行记录/.test(x.textContent));
+    if (recItem) {
+      recItem.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+      await wait(500);
+      const rm = Array.from(doc.querySelectorAll('.mask .modal')).pop();
+      const rmText = rm ? rm.textContent : '';
+      ok('执行记录弹窗有「整改日期」', /整改日期/.test(rmText), rmText.slice(0, 60));
+      ok('执行记录弹窗有「整改照片」入口', /整改照片/.test(rmText));
+      const closeBtn = rm && Array.from(rm.querySelectorAll('.btn')).pop();
+      if (closeBtn) closeBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+      await wait(200);
+    }
+  }
+
   ok('全程无 JS 报错', errors.length === 0, errors.join(' | ').slice(0, 200));
 
   console.log('\n结果：通过 ' + pass + ' / 失败 ' + fail);

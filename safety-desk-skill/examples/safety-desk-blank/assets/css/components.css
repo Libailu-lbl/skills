@@ -1100,6 +1100,18 @@ table.usg .usg-when{ width:112px; color:var(--text-3); white-space:nowrap; }
    必须显式补一条，否则统计条下面留一条空绿条 */
 .kw-hint[hidden]{ display:none; }
 
+/* ---- 受限模式说明条（★ 2026-11-11）----
+   受限时看板上方常驻一条：为什么推进按钮是灰的、去哪解锁。
+   手机上没 hover，光靠 title 看不出来。 */
+.kw-lock{
+  display:flex; align-items:flex-start; gap:7px;
+  padding:9px 12px; margin-bottom:10px;
+  border:1px dashed #eed6bb; background:var(--warn-bg); border-radius:var(--radius-s);
+  font-size:12.5px; color:#8a4b16; line-height:1.5;
+}
+.kw-lock svg{ flex:0 0 auto; margin-top:1px; }
+.kw-lock[hidden]{ display:none; }
+
 /* ---- 筛选栏（复用 .filters，只补本页元素尺寸） ---- */
 .kw-filters{ margin-bottom:12px; box-shadow:none; }
 .kw-filters .kw-q{ width:210px; }
@@ -1188,6 +1200,16 @@ table.usg .usg-when{ width:112px; color:var(--text-3); white-space:nowrap; }
   padding:3px 5px; margin-left:auto; cursor:pointer; border-radius:6px;
 }
 .kw-adv:hover{ background:var(--brand-soft); }
+/* 受限模式：推进按钮禁用态（与 .btn.is-locked 同一套语义，这里是文字按钮，单独一套） */
+.kw-adv.is-locked{
+  color:var(--text-3); cursor:not-allowed;
+  border:1px dashed #c3cdd1; background:#f4f6f7; border-radius:6px;
+  display:inline-flex; align-items:center; gap:3px;
+}
+.kw-adv.is-locked:hover{ background:#f4f6f7; }
+.kw-adv.is-locked svg{ width:11px; height:11px; }
+/* 受限时卡片不可拖：别给出「可以拖」的手型暗示 */
+.kw-item[draggable="false"]{ cursor:default; }
 .kw-done{ display:inline-flex; align-items:center; gap:3px; margin-left:auto; font-size:11.5px; font-weight:600; color:var(--ok); }
 .kw-done svg{ width:12px; height:12px; }
 
@@ -1208,7 +1230,7 @@ table.usg .usg-when{ width:112px; color:var(--text-3); white-space:nowrap; }
 
 /* ---- 打印：看板按两列排，去掉交互件 ---- */
 @media print{
-  .kw-filters, .kw-adv, .kw-hint{ display:none !important; }
+  .kw-filters, .kw-adv, .kw-hint, .kw-lock{ display:none !important; }
   .kw-board{ grid-template-columns:repeat(2,1fr); gap:8px; }
   .kw-col{ background:#fff; border:1px solid #ccc; break-inside:avoid; }
   .kw-item{ box-shadow:none; break-inside:avoid; }

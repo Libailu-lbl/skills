@@ -69,6 +69,25 @@ SD.views.inspection = (function () {
       name: 'photos', label: '隐患照片', type: 'photos', full: true, max: 18,
       help: '最多 18 张，可一次性多选；原图保存（大图自动外置，不压缩）。' +
             '张数会计入数据看板「各部门隐患照片」统计；与「发现隐患数」不是同一口径（那个记条数）'
+    },
+    /* 整改日期 ★ 2026-11-11 新增（用户要求）：
+       隐患整改**完成**的日期。与「计划日期」不是一回事 —— 计划日期是打算哪天巡检，
+       整改日期是问题什么时候改完的，两者没有先后约束（可以同一天，也可以隔几天）。 */
+    {
+      name: 'fixDate', label: '整改日期', type: 'date',
+      help: '隐患整改完成的日期（没整改动作可留空）'
+    },
+    /* 整改照片 ★ 2026-11-11 新增（用户要求）：
+       整改完成后补拍的现场照片。
+       ⚠️ 与上面的「隐患照片」**分开存**（`photos` = 发现问题时 / `fixPhotos` = 整改后），
+         因为两者是一条证据链的两端：整改前用来证明问题存在，整改后用来证明已经闭环。
+         混在一个数组里就分不清前后，也无法各自计数。
+       ⚠️ **不计入**数据看板「隐患照片」口径（`metrics.inspectionPhotos` 只读 `photos`），
+         否则同一件事的照片会被数两遍，KPI 就虚高了。 */
+    {
+      name: 'fixPhotos', label: '整改照片', type: 'photos', full: true, max: 18,
+      help: '整改完成后的现场照片（整改后），最多 18 张，原图保存。' +
+            '与「隐患照片」（整改前）分开存，不计入看板「隐患照片」统计'
     }
   ];
 
@@ -100,6 +119,9 @@ SD.views.inspection = (function () {
           dept: v.dept || '', executor: v.executor,
           scheduledDate: v.scheduledDate, remark: v.remark || '',
           hazardType: v.hazardType || '',
+          /* ★ 2026-11-11 新增：整改照片 / 整改日期（与隐患照片 photos 分开存） */
+          fixDate: v.fixDate || '',
+          fixPhotos: v.fixPhotos || [],
           status: status,
           photos: v.photos || []
         };
@@ -122,7 +144,10 @@ SD.views.inspection = (function () {
         }
         var req = isEdit
           ? SD.api.updateInspection(t.id, payload)
-          : SD.api.createInspection(Object.assign({ hazardCount: 0, completedAt: null, rescheduleTo: null, reason: '' }, payload));
+          : SD.api.createInspection(Object.assign({
+              hazardCount: 0, completedAt: null, rescheduleTo: null, reason: '',
+              fixDate: '', fixPhotos: []
+            }, payload));
         return req.then(function () {
           U.toast(isEdit ? '巡检任务已更新' : '巡检任务已新增', 'ok');
           ctx.reload();
@@ -220,6 +245,13 @@ SD.views.inspection = (function () {
             ? '<button type="button" class="btn sm js-insp-ph" data-id="' + t.id + '">查看 ' + t.photos.length + ' 张照片</button>'
             : '<span class="t-3">—（登记 / 编辑巡检时可添加）</span>') +
         '</div></label>' +
+        /* ★ 2026-11-11：整改两件套也进执行记录（整改是在执行之后发生的，放这里最顺） */
+        '<label class="field"><span>整改日期</span><div>' + U.esc(t.fixDate || '—') + '</div></label>' +
+        '<label class="field full"><span>整改照片</span><div>' +
+          (t.fixPhotos && t.fixPhotos.length
+            ? '<button type="button" class="btn sm js-insp-fix" data-id="' + t.id + '">查看 ' + t.fixPhotos.length + ' 张整改照片</button>'
+            : '<span class="t-3">—（编辑巡检时可添加）</span>') +
+        '</div></label>' +
       '</div>';
     var recDlg = SD.comp.dialog.open({ title: '执行记录', width: 560, body: body, okText: '关闭' });
     /* 弹窗内点「查看照片」→ 同样开大图 */
@@ -227,6 +259,12 @@ SD.views.inspection = (function () {
       var cur = SD.app.state.summary.inspections.filter(function (x) { return x.id === el.dataset.id; })[0] || t;
       var ph = cur.photos || [];
       if (ph.length) SD.comp.lightbox.open(ph, 0, { title: cur.code + ' ' + cur.area });
+    });
+    /* 整改照片（整改后）单独一个入口，标题写清是「整改照片」，免得和整改前的混看 */
+    U.on(recDlg.el, 'click', '.js-insp-fix', function (e, el) {
+      var cur = SD.app.state.summary.inspections.filter(function (x) { return x.id === el.dataset.id; })[0] || t;
+      var ph = cur.fixPhotos || [];
+      if (ph.length) SD.comp.lightbox.open(ph, 0, { title: cur.code + ' ' + cur.area + ' · 整改照片' });
     });
   }
 
@@ -502,7 +540,10 @@ SD.views.inspection = (function () {
       '本周 = 周一至周日。完成率分母 = 本周计划任务数（已取消的不计入）；' +
       '已改期任务仍留在分母内且不算完成，因此改期不会让完成率变好看 —— 这是刻意的，避免改期成为规避手段。' +
       '状态也可在「编辑」表单里直接改（选已完成会自动补一条默认执行记录，现场情况可再补填）；' +
-      '列表支持关键词搜索与点表头排序。</section>'
+      '列表支持关键词搜索与点表头排序。<br>' +
+      '<b class="t-2">照片与整改</b>　「隐患照片」是整改前的问题现场，「整改照片」是整改后的结果，两者分开存、各自最多 18 张；' +
+      '看板「隐患照片 / 各部门隐患照片」只统计前者，整改照片不计入，避免同一件事被数两遍。' +
+      '「整改日期」记整改完成的那天，与「计划日期」相互独立。</section>'
     ));
   }
 
