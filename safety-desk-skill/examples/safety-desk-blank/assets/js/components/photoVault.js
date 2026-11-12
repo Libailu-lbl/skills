@@ -21,6 +21,14 @@
      SD.photoVault.externalize(data)          // Promise<替换成 vault:key 的副本>
      SD.photoVault.hydrate(data)              // Promise<换回 dataURL 的副本>
      SD.photoVault.clear()                    // 清空仓库（清空数据 / 重置时调）
+
+   ★ 2026-11-12：兼收「通知公告的文档附件」。
+     附件（PDF / Word / Excel / txt）同样是几 MB 的 dataURL，直接进 localStorage 必然爆。
+     外置规则不变，只是前缀分两种：
+       vault:<key>       → 图片（旧数据全是这种，向后兼容）
+       vault:doc:<key>   → 非图片 dataURL（附件）
+     水合时按前缀还原占位：图片丢了给灰色占位图，文档丢了给一段文字说明。
+     名字还叫 photoVault（外部引用点多），但语义已是「大对象仓库」。
    ========================================================= */
 window.SD = window.SD || {};
 SD.comp = SD.comp || {};
@@ -31,12 +39,24 @@ SD.photoVault = (function () {
   var DB_VER = 1;
   var LIMIT = 30000;                 // 超过约 22KB 的图片才外置（示例 SVG 小图不受影响）
   var PREFIX = 'vault:';
+  /* ★ 2026-11-12：通知公告开始存文档附件（PDF / Word / Excel …），同样会撑爆
+     localStorage，所以这一层兼收「非图片的大 dataURL」。
+     引用前缀分开写（vault:doc:），是为了水合时知道该拿什么占位：
+     图片丢了给灰色占位图，文档丢了给一段说明文字 —— 拿图片占位去顶 PDF，
+     点开只会是一张破图，用户根本不知道发生了什么。
+     旧数据里只有 vault:<key>（图片），不带 doc: 的一律按图片处理，向后兼容。 */
+  var DOC_PREFIX = 'vault:doc:';
 
   var MISSING = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="90">' +
       '<rect width="120" height="90" fill="#eef2f3"/>' +
       '<text x="60" y="52" font-size="11" fill="#8b9ba0" text-anchor="middle">照片丢失</text>' +
     '</svg>');
+
+  var DOC_MISSING = 'data:text/plain;charset=utf-8,' + encodeURIComponent(
+    '附件已丢失。\n\n' +
+    '这份文件的原始数据不在当前浏览器里（可能清过浏览器数据、或换了另一台设备/浏览器）。\n' +
+    '请让发布人重新上传这份附件。');
 
   var usable = (typeof indexedDB !== 'undefined' && !!indexedDB);
   var booted = null;                 // Promise<IDBDatabase>
@@ -141,6 +161,15 @@ SD.photoVault = (function () {
     return s.length > LIMIT && s.indexOf('data:image/') === 0;
   }
 
+  /** 需要外置的字符串？（非图片的 dataURL：PDF / Office / 纯文本等附件） */
+  function isDocData(s) {
+    if (s.length <= LIMIT) return false;
+    return s.indexOf('data:application/') === 0 ||
+      s.indexOf('data:text/') === 0 ||
+      s.indexOf('data:audio/') === 0 ||
+      s.indexOf('data:video/') === 0;
+  }
+
   /* ---------------- 对外：外置 / 水合 ---------------- */
   /**
    * 落盘前调用：把大图搬到 IndexedDB，返回只含引用的深拷贝
@@ -150,10 +179,11 @@ SD.photoVault = (function () {
     if (!usable || !data) return Promise.resolve(data);
     var pairs = [], seen = {};
     var slim = walk(data, function (s) {
-      if (!isBigImage(s)) return s;
+      var doc = isDocData(s);
+      if (!doc && !isBigImage(s)) return s;
       var k = keyOf(s);
       if (!seen[k]) { seen[k] = 1; pairs.push([k, s]); }
-      return PREFIX + k;
+      return (doc ? DOC_PREFIX : PREFIX) + k;
     });
     if (!pairs.length) return Promise.resolve(slim);
     return putMany(pairs).then(function () { return slim; }, function () { return data; });
@@ -162,8 +192,14 @@ SD.photoVault = (function () {
   /** 启动时调用：把 vault:key 全部换回 dataURL，返回完整深拷贝 */
   function hydrate(data) {
     if (!usable || !data) return Promise.resolve(data);
+    /* 先认 vault:doc:（更长），否则会被 vault: 前缀吞掉、拿图片占位去顶文档 */
     var need = {}, list = [];
     walk(data, function (s) {
+      if (s.indexOf(DOC_PREFIX) === 0) {
+        var kd = s.slice(DOC_PREFIX.length);
+        if (!need[kd]) { need[kd] = 1; list.push(kd); }
+        return s;
+      }
       if (s.indexOf(PREFIX) !== 0) return s;
       var k = s.slice(PREFIX.length);
       if (!need[k]) { need[k] = 1; list.push(k); }
@@ -172,8 +208,11 @@ SD.photoVault = (function () {
     if (!list.length) return Promise.resolve(data);
     return getMany(list).then(function (map) {
       return walk(data, function (s) {
-        if (s.indexOf(PREFIX) !== 0) return s;
-        return map[s.slice(PREFIX.length)] || MISSING;
+        var isDoc = s.indexOf(DOC_PREFIX) === 0;
+        if (!isDoc && s.indexOf(PREFIX) !== 0) return s;
+        var kk = s.slice(isDoc ? DOC_PREFIX.length : PREFIX.length);
+        if (map[kk]) return map[kk];
+        return isDoc ? DOC_MISSING : MISSING;
       });
     }, function () { return data; });
   }

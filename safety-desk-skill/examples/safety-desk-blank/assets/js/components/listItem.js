@@ -89,21 +89,36 @@ SD.comp.listItem = (function () {
   /**
    * 通知条目
    * @param {object} n     通知对象
-   * @param {object} opts  { onEdit(n), onDelete(n) } 传入则在条目右下渲染操作按钮
+   * @param {object} opts  { onEdit(n), onDelete(n), onOpen(n) }
+   *   传了 onOpen 且这条公告**带附件**时，标题变成可点按钮 —— 点开看文档；
+   *   没有附件的标题保持纯文本：不做「点了什么也没有」的假按钮。
    */
   function notice(n, opts) {
     opts = opts || {};
     var badge = B();
+    var docs = Array.isArray(n.docs) ? n.docs : [];
+    var canOpen = docs.length > 0 && typeof opts.onOpen === 'function';
+
     var el = U.h(
       '<div class="notice-item' + (n.pinned ? ' pinned' : '') + '">' +
         '<div class="nh">' + badge.noticeLevel(n.level) +
           (n.pinned ? ' <span class="tag">' + SD.icons.get('alertCircle', 12) + '置顶</span>' : '') +
-          '<span class="nt">' + U.esc(n.title) + '</span>' +
+          (canOpen
+            ? '<button type="button" class="nt nt-link" title="点击查看文档">' + U.esc(n.title) + '</button>' +
+              badge.tag(docs.length + ' 个附件', 'file')
+            : '<span class="nt">' + U.esc(n.title) + '</span>') +
         '</div>' +
         '<div class="ns">' + U.esc(n.summary || '') + '</div>' +
         '<div class="nf">' + U.esc(n.source || '') + ' · ' + U.esc(n.publishAt || '') + ' · ' + U.esc(n.code || '') + '</div>' +
       '</div>'
     );
+
+    if (canOpen) {
+      el.querySelector('.nt-link').addEventListener('click', function (e) {
+        e.stopPropagation();
+        opts.onOpen(n);
+      });
+    }
 
     if (opts.onEdit || opts.onDelete) {
       // 与其它模块一致：操作收成一个「操作 ▾」下拉

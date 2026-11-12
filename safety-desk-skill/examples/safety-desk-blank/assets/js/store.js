@@ -125,7 +125,7 @@ SD.store = (function () {
       if (!quotaWarned) {
         quotaWarned = true;
         if (U && U.toast) {
-          U.toast('本地存储已满：照片太大存不下。可减少照片张数，或把 config.js 的 photo.compress 设为 true 改用压缩', 'err');
+          U.toast('本地存储已满：照片或附件太大存不下。可减少附件数量 / 降低照片张数，或把 config.js 的 photo.compress 设为 true 改用压缩', 'err');
         }
       }
       return false;

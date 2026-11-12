@@ -503,8 +503,22 @@
 | `source` | string | 是 | 发布单位 |
 | `level` | enum | 是 | `urgent` 紧急 / `important` 重要 / `normal` 普通 |
 | `publishAt` | date | 是 | 发布日期 |
-| `summary` | string | 否 | 摘要正文 |
+| `summary` | string | 否 | 摘要正文（列表里展示这段） |
+| `docs` | array | 否 | **文档附件**（★ 2026-11-12 新增，可选）。数组元素：`{id, name, size, mime, dataUrl}`。列表里带附件的标题可点，点开查看；**未上传时不写该字段**（不是空数组） |
 | `pinned` | boolean | 否 | 是否置顶（置顶优先，其余按发布时间倒序） |
+
+**附件约束（`components/docAttach.js`，改之前先读）**
+
+| 项 | 规则 |
+|---|---|
+| 类型 | PDF / doc,docx / xls,xlsx / ppt,pptx / txt / png,jpg,webp；**html / svg / js / exe / bat 等明确拒绝**（点开即执行环境） |
+| 大小 | 单文件 **2MB**；浏览器无 IndexedDB（隐私模式 / 老浏览器）时降到 **800KB** |
+| 数量 | 每条公告 **≤ 3 个** |
+| 超限行为 | 拒绝并提示上限，**不静默截断、不压缩**（Office 文件压不了） |
+| 落盘 | `dataUrl` 由 `photoVault` 外置到 IndexedDB，localStorage 里只留 `vault:doc:<key>` 引用；图片仍是 `vault:<key>` |
+| 丢失 | 水合时文档引用找不到 → 给 `data:text/plain` 占位并标「文件已丢失」，不拿图片占位顶替 |
+| 打开 | 图片走灯箱预览；PDF 用 blob URL 新窗口（Chrome 已禁止顶级导航到 `data:`）；Office **只能下载**后用 WPS/Office 打开 |
+| 导入导出 | JSON 备份完整带附件；Excel / 日报 / 周报**不含**公告，因此不带附件 |
 
 ---
 

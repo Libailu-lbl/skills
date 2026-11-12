@@ -352,13 +352,14 @@ SD.views.training = (function () {
     redraw();
 
     /* ---------- 口径说明 ---------- */
-    host.appendChild(U.h(
-      '<section class="card tight t-3 t-sm"><b class="t-2">口径说明</b>　' +
+    host.appendChild(SD.comp.noteCard.build({
+      key: 'training',
+      html:
       '状态：未开始 → 进行中 → 已完成；参与率 = 实到人数 ÷ 应到人数（按全部已完成班次合计）。' +
       '培训照片在「新增 / 编辑」弹窗底部上传（最多 6 张），台账里点「培训名称」看大图。' +
       '人员持证到期的预警不再放在本模块，改由「特种作业人员」按复审日期预警。' +
-      '列表支持关键词搜索与点表头排序；未完成的培训也会进入「待办任务」，可一键标记完成。</section>'
-    ));
+      '列表支持关键词搜索与点表头排序；未完成的培训也会进入「待办任务」，可一键标记完成。'
+    }));
   }
 
   return { name: '安全培训', sub: sub, render: render };

@@ -10,7 +10,7 @@
      {
        name      : string   必填，取值键名
        label     : string   显示名
-       type      : text | textarea | date | number | select | switch | photos | people | code | checks
+       type      : text | textarea | date | number | select | switch | photos | people | code | checks | docs
        options   : array    select / checks 用，['A','B'] 或 [{v,n}]
        required  : bool     必填（空值拦截；photos 用「至少一张」判定；checks 用「至少勾一项」）
        requiredMsg: string  必填未填时的提示文案（★ 2026-11-12）——
@@ -29,6 +29,14 @@
    people 类型说明（作业人员这类「一组人」）：
      同样渲染占位容器，进 DOM 后由 peoplePicker 挂载标签输入控件，
      取值走容器上的 _pp 实例 → 返回姓名字符串数组。
+
+   docs 类型说明（文档附件，★ 2026-11-12 通知公告用）：
+     同样渲染占位容器，进 DOM 后由 docAttach 挂载附件选择器，
+     取值走容器上的 _da 实例 → 返回 [{id,name,size,mime,dataUrl}] 数组。
+     · max       : 最多几个（默认 3）
+     · 类型与大小在组件内拦（pdf/Word/Excel/PPT/txt/图片，单文件 2MB，
+       无 IndexedDB 时降到 800KB），这里只负责把值读回来
+     · required  : 「至少一个附件」才算填了（与 photos 同义）
 
    code 类型说明（单据编号，2026-10-24 起默认顺延填入、可手动修改）：
      渲染成一个输入框，新增时**预填下一个可用编号**（SD.code.next 顺延生成，
@@ -112,6 +120,10 @@ SD.comp.formDialog = (function () {
     if (field.type === 'people') {
       return '<div class="pp-slot" id="' + id + '" data-max="' + (field.max || 8) + '"></div>';
     }
+    if (field.type === 'docs') {
+      // 占位容器：真实控件等弹窗进 DOM 后由 docAttach 挂载（见 open 的 onMount）
+      return '<div class="da-slot" id="' + id + '" data-max="' + (field.max || 3) + '"></div>';
+    }
     if (field.type === 'checks') {
       /* 多选 + 「其它」手填：勾选项与补充说明分开存（{picks, other}）。
          外层 field 是 div（见 buildBody），所以这里可以放心用 <label> 包每个选项。 */
@@ -156,7 +168,7 @@ SD.comp.formDialog = (function () {
       // 点空白处会误触发「添加」，所以这两项改用 div 包；
       // code 同理（曾是「输入框 + 默认按钮」组合，按钮放进 label 点按钮会连带触发 label 行为）；
       // checks 里面有多个 <label> 与补充输入框，嵌进外层 <label> 属非法 HTML，同样用 div
-      var tag = (f.type === 'photos' || f.type === 'people' || f.type === 'code' || f.type === 'checks')
+      var tag = (f.type === 'photos' || f.type === 'people' || f.type === 'code' || f.type === 'checks' || f.type === 'docs')
         ? 'div' : 'label';
       return '<' + tag + ' class="field' + (f.full ? ' full' : '') + '">' +
         '<span' + (f.required ? ' class="req"' : '') + '>' + U.esc(f.label) + '</span>' +
@@ -216,6 +228,12 @@ SD.comp.formDialog = (function () {
         out[f.name] = (el._pp ? el._pp.get() : ((fallback && fallback[f.name]) || []));
         return;
       }
+      if (f.type === 'docs') {
+        /* 与 photos 同理：控件没挂上（如测试环境）就退回原值，
+           否则编辑一条带附件的公告、只改标题，附件会被静默清空。 */
+        out[f.name] = (el._da ? el._da.get() : ((fallback && fallback[f.name]) || []));
+        return;
+      }
       if (f.type === 'checks') {
         out[f.name] = readChecks(el, f);
         return;
@@ -232,8 +250,8 @@ SD.comp.formDialog = (function () {
     for (var i = 0; i < fields.length; i++) {
       var f = fields[i], v = values[f.name];
       var empty = (v == null) || (String(v).trim() === '');
-      // 照片 / 人员是数组，「至少一张 / 至少一人」才算填了
-      if (f.type === 'photos' || f.type === 'people') empty = !Array.isArray(v) || v.length === 0;
+      // 照片 / 人员 / 附件是数组，「至少一张 / 至少一人 / 至少一个」才算填了
+      if (f.type === 'photos' || f.type === 'people' || f.type === 'docs') empty = !Array.isArray(v) || v.length === 0;
       // 多选是 {picks, other}，「至少勾一项」才算填了
       if (f.type === 'checks') empty = !(v && Array.isArray(v.picks) && v.picks.length);
       if (f.required && empty) return f.requiredMsg || ('「' + f.label + '」不能为空');
@@ -297,6 +315,11 @@ SD.comp.formDialog = (function () {
             SD.comp.peoplePicker.mount(box, {
               value: (o.values && o.values[f.name]) || [],
               max: f.max || 8
+            });
+          } else if (f.type === 'docs' && SD.comp.docAttach) {
+            SD.comp.docAttach.mount(box, {
+              value: (o.values && o.values[f.name]) || [],
+              max: f.max || 3
             });
           } else if (f.type === 'checks') {
             mountChecks(box, f);

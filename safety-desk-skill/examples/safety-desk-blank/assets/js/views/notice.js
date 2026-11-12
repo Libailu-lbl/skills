@@ -25,6 +25,11 @@ SD.views.notice = (function () {
     { name: 'source', label: '发布单位', type: 'text', required: true, placeholder: '例：安环部' },
     { name: 'publishAt', label: '发布日期', type: 'date', required: true, def: function () { return SD.utils.today(); } },
     { name: 'summary', label: '摘要正文', type: 'textarea', full: true, rows: 4, placeholder: '通知要点，列表页展示这段' },
+    /* ★ 2026-11-12 用户要求：编辑里可「添加文档」，发布后点标题查看。
+       附件是**可选**的：多数口头通知没有正文文件，强制必填只会逼人随便传一张图。
+       类型与大小由 docAttach 拦（PDF / Word / Excel / PPT / txt / 图片，单个 2MB，最多 3 个）。 */
+    { name: 'docs', label: '文档附件', type: 'docs', full: true, max: 3,
+      help: '可选。上传后列表里点标题即可查看；PDF 与图片可直接打开，Word / Excel / PPT 需下载后用办公软件打开' },
     { name: 'pinned', label: '置顶', type: 'switch', switchText: '置顶显示（优先于其它公告）', def: false }
   ];
 
@@ -100,15 +105,25 @@ SD.views.notice = (function () {
       fields: resolve(n),
       values: n || {},
       onSubmit: function (v) {
+        var docs = Array.isArray(v.docs) ? v.docs : [];
         var payload = {
           code: v.code,
           title: v.title, level: v.level || 'normal', source: v.source,
           publishAt: v.publishAt, summary: v.summary || '', pinned: !!v.pinned
         };
+        /* 不带附件时不写空字段（老公告改标题不会平白多出一个 docs: []）；
+           编辑过带附件的公告则可以清空 —— 清空要真的落库，否则删不掉。 */
+        if (docs.length || (isEdit && Array.isArray(n.docs))) payload.docs = docs;
         return (isEdit ? SD.api.updateNotice(n.id, payload) : SD.api.createNotice(payload))
           .then(function () { U.toast(isEdit ? '公告已更新' : '公告已发布', 'ok'); ctx.reload(); });
       }
     });
+  }
+
+  /** 点标题看文档（★ 2026-11-12）：只读弹窗，不涉及写权限 */
+  function openDocs(n) {
+    if (!SD.comp.docAttach) return;
+    SD.comp.docAttach.openViewer(n.docs || [], n.title);
   }
 
   function remove(ctx, n) {
@@ -213,6 +228,7 @@ SD.views.notice = (function () {
     } else {
       list.forEach(function (n) {
         listBox.appendChild(SD.comp.listItem.notice(n, {
+          onOpen: function (x) { openDocs(x); },
           onEdit: function (x) { openForm(ctx, x); },
           onDelete: function (x) { remove(ctx, x); }
         }));
@@ -224,11 +240,12 @@ SD.views.notice = (function () {
     host.appendChild(card);
 
     /* ---------- 说明 ---------- */
-    host.appendChild(U.h(
-      '<section class="card tight t-3 t-sm"><b class="t-2">说明</b>　' +
+    host.appendChild(SD.comp.noteCard.build({
+      key: 'notice',
+      html:
       '常用功能快捷入口已移至左侧导航下方；未接入的功能会在点击时给出提示，' +
-      '接入方式：在对应按钮里换成真实链接或调用 SD.api 的语义函数即可，页面其余部分不受影响。</section>'
-    ));
+      '接入方式：在对应按钮里换成真实链接或调用 SD.api 的语义函数即可，页面其余部分不受影响。'
+    }));
   }
 
   return { name: '通知公告', sub: sub, render: render };

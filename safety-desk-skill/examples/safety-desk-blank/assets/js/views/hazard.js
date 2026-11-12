@@ -665,14 +665,13 @@ SD.views.hazard = (function () {
     redraw();
 
     /* ---------- 口径说明 ---------- */
-    host.appendChild(U.h(
-      '<section class="card tight t-3 t-sm">' +
-        '<b class="t-2">口径说明</b>　' +
+    host.appendChild(SD.comp.noteCard.build({
+      key: 'hazard',
+      html:
         '等级为双字段：severity（重大/较大/一般 → 红/橙/黄）用于内部管理与排序，' +
         'statutoryLevel（重大事故隐患/一般事故隐患）用于对外报表，按安监总局令第 16 号两级口径自动归类。' +
-        '逾期按「当前期限」判定，但原始期限 originalDueDate 永不改写 —— 改期限洗不掉逾期记录。' +
-      '</section>'
-    ));
+        '逾期按「当前期限」判定，但原始期限 originalDueDate 永不改写 —— 改期限洗不掉逾期记录。'
+    }));
   }
 
   return { name: '隐患整改通知书', sub: sub, render: render, openCreate: openCreate };
