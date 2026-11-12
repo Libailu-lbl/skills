@@ -192,7 +192,7 @@ SD.app = (function () {
     if (els.title) els.title.textContent = view.name;
     if (els.sub) {
       els.sub.textContent = state.loading ? '加载中…'
-        : (state.error ? '数据加载失败' : (typeof view.sub === 'function' ? view.sub(s) : ''));
+        : (state.error ? '数据加载失败' : (typeof view.sub === 'function' ? view.sub(s, state) : ''));
     }
 
     // 3) 内容区三态：加载中 / 失败 / 正常

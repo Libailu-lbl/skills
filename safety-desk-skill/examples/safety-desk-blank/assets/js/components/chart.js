@@ -19,6 +19,8 @@ SD.comp.chart = (function () {
    *   series  [{name:'新增', color:'#d92d20', data:[7,9,...]}]
    *   height  SVG 高度（默认 220）
    *   unit    提示后缀
+   *   xFormat (label, i) → 横轴文案。缺省 `'YYYY-MM' → 'MM月'`；月视图逐日传 `'27 日'`
+   *   xStep   横轴隔几个显示一个。缺省 `n>8 ? 2 : 1`；31 天传 4 左右（约 8 个刻度）
    */
   function lineChart(o) {
     o = o || {};
@@ -52,21 +54,40 @@ SD.comp.chart = (function () {
            Math.round(yv) + '</text>';
     }
 
-    // X 轴标签（点密时隔一个显示，避免挤成一团）
-    var step = n > 8 ? 2 : 1;
+    // X 轴标签（点密时隔几个显示，避免挤成一团）
+    /* ★ 2026-11-12 v1.3.9：月视图逐日曲线要 30 个点，横轴文案得换成「27 日」，并保证
+       末尾刻度不和前一个挤在一起（30 天时 step=4 会算出 29 与 30 相邻 → 移动端糊成一团）。
+       xFormat / xStep 都是可选参数：**只有传了 xStep 才启用新排布**，不传时与旧行为逐字节一致
+       （年视图零视觉回归，包括它原本就有的「11 月 / 12 月」相邻这点也不动）。 */
+    var step = o.xStep || (n > 8 ? 2 : 1);
+    var fmtX = typeof o.xFormat === 'function'
+      ? o.xFormat
+      : function (lb) { return String(lb).slice(5) + '月'; };
+    var showIdx = null;
+    if (o.xStep) {
+      showIdx = [];
+      for (var si = 0; si < n; si += step) showIdx.push(si);
+      if (showIdx[showIdx.length - 1] !== n - 1) {
+        if (n - 1 - showIdx[showIdx.length - 1] < step) showIdx.pop();   // 末尾太近 → 撤前一个
+        showIdx.push(n - 1);
+      }
+    }
     labels.forEach(function (lb, i) {
-      if (i % step !== 0 && i !== n - 1) return;
+      if (showIdx) {
+        if (showIdx.indexOf(i) < 0) return;
+      } else if (i % step !== 0 && i !== n - 1) return;
       g += '<text x="' + X(i) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="10" fill="#8b9ba0">' +
-           U.esc(String(lb).slice(5) + '月') + '</text>';
+           U.esc(fmtX(lb, i)) + '</text>';
     });
 
-    // 折线与数据点
+    // 折线与数据点（点多时缩小圆点，否则 31 个 3px 圆在窄屏上会连成一片）
+    var dotR = n > 20 ? 2 : 3;
     series.forEach(function (s) {
       var d = '', pts = '';
       (s.data || []).forEach(function (v, i) {
         var x = X(i), y = Y(v);
         d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
-        pts += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3" fill="#fff" stroke="' +
+        pts += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + dotR + '" fill="#fff" stroke="' +
                s.color + '" stroke-width="2"><title>' + U.esc(s.name) + ' ' + U.esc(labels[i]) + '：' + v +
                (o.unit || ' 条') + '</title></circle>';
       });

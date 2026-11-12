@@ -2,6 +2,64 @@
 
 本项目按「工作台版本」记录；日期为实际开发日期。
 
+## v1.3.9 — 数据看板「按月察看」（2026-11-12）
+
+**主题**：给看板加月维度 —— 默认按月（进入即当月）、可切回完整年视图；
+月份可回看任意有数据的年月；月视图趋势改为该月逐日；KPI 加环比。
+
+### 一、先纠正前提：看板原来没有日/周维度
+
+看板自 v1.3.8 只有「当前自然年」一个口径。日/周统计在日报、周报
+（`SD.report.daily/weekly`）与巡检页「本周完成率」里。所以本轮是**新开月维度**，
+不新增日/周档 —— 否则会与日报/周报形成第二套同义口径。
+
+### 二、聚合：一个可选第三参，不写第二套算法
+
+```js
+inspectionStats(data, today)                    // 当年（逐值等于旧行为）
+inspectionStats(data, today, { ym:'2026-11' })  // 该自然月
+```
+
+内部拆成 `scopeInspections`（只筛，按 scheduledDate）与 `statsOf`（只算），
+月档与年档共用同一个聚合层，六格恒等式与部门汇总不可能分叉。
+输出只增不改：`range` / `daily` / `fixedCarryIn`。
+
+### 三、月档唯一允许的双口径
+
+| 线 | 取数范围 | 理由 |
+|---|---|---|
+| 上报 | 本月记录（containment） | 与 KPI/六格/照片同源，图上合计 = KPI |
+| 已整改 | 所有记录里 `fixDate` 落本月的行（事件窗口） | 否则「上月发现、本月改完」在两边的图里都不出现 |
+
+系列名写「已整改（按整改日期）」，`fixedCarryIn > 0` 时图例标出「其中 N 条来自上月及以前上报」。
+年档保持 containment，不改既有数字。
+
+### 四、其它关键取舍
+
+- **逾期基准 = 今天**（两档一致，不加 `asOf`）：看「这些隐患现在还剩多少没改完」，
+  不是月末快照；用月末会把后来事实倒灌进历史。文案用「截至今天」承担解释。
+- **环比只加在月档**，四条边界都处理：上月 0 不出百分比、本月 0 写「本月暂无隐患」、
+  上月无基数写「无可比基数」、双方 0 写持平；整改率用「个百分点」不用相对变化。
+- 着色单开 `bad / good`（按好坏），不复用 `footTone` 的 `up / down`（按数值方向）。
+
+### 五、涉及文件
+
+| 文件 | 改动 |
+|---|---|
+| `utils.js` | `daysInMonth / startOfMonth / endOfMonth`（`new Date(y,m,0)` 求天数） |
+| `metrics.js` | `rangeOf / inRangeOf / scopeInspections / inspectionMonthsOf`；两入口第三参；`daily / fixedCarryIn / range`；导出 `inspectionRange`、`inspectionMonthsOf` |
+| `dashboard.js` | 范围条、月档现算 / 年档读 summary、KPI 环比、逐日趋势、文案与口径说明 |
+| `statCard.js` / `chart.js` | 可选 `delta / deltaTone`；可选 `xFormat / xStep` + 点半径自适应 |
+| `app.js` | `view.sub(s)` → `view.sub(s, state)` |
+| `components.css` | `.dash-range`、`.stat-delta`、760 断点 |
+
+### 六、自检
+
+`smoke_inspection_photos` 244 → **291**（第 17 节改为「先月档默认态、再切年度跑原断言」，
+新增第 18 节 47 项），`smoke_blank` 166 → **168**，18 套合计 **1500 项**全绿；
+骨架 19 项。截图核验 1280/390 双档：范围条三行排布、环比行、逐日刻度
+（`1/5/9/13/17/21/25/30 日`，末尾不重叠）、`scrollWidth === clientWidth`。
+
 ## v1.3.8 — 整改期限新增必填 + 看板只统计当年（2026-11-12）
 
 **主题**：①新增巡检记录时「整改期限」改为必填并校验，未填阻止提交且提示说清原因；

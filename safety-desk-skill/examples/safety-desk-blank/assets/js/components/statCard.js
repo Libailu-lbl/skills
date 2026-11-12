@@ -20,6 +20,8 @@ SD.comp.statCard = (function () {
    *   foot      脚注文字
    *   footIcon  脚注图标（trendUp / trendDown / infoCircle）
    *   footTone  'up'（红，表示变差）/ 'down'（绿，表示变好）/ ''
+   *   delta     环比文案（★ 2026-11-12，如「较上月 +25%（上月 4 条）」），单独一行
+   *   deltaTone 'bad'（红）/ 'good'（绿）/ ''，按**好坏**着色，不按数值方向
    *   bar       { pct:0~1, cls:'red'|'orange'|'green'|'' }  底部占比条
    *   hint      title 提示（口径说明）
    *   onClick   点击回调
@@ -43,6 +45,12 @@ SD.comp.statCard = (function () {
         '<div class="stat-value num">' + U.esc(val) +
           (o.unit ? '<span class="unit">' + U.esc(o.unit) + '</span>' : '') +
         '</div>' +
+        /* ★ 2026-11-12 v1.3.9：环比行（可选）。
+           为什么不复用 foot / footTone：foot 已被多处逐字使用（「另有 N 条整改中」
+           「尚未设置整改期限」），挤占会串味；而 footTone 的 up/down 是「按数值方向」
+           着色，「已整改上升」这类好事会变红。这里单开 bad/good，按**好坏**着色。 */
+        (o.delta ? '<div class="stat-delta"><span class="' + (o.deltaTone || '') + '">' +
+          U.esc(o.delta) + '</span></div>' : '') +
         (o.foot ? '<div class="stat-foot">' +
             (o.footIcon ? SD.icons.get(o.footIcon, 13) : '') +
             '<span class="' + (o.footTone || '') + '">' + U.esc(o.foot) + '</span>' +

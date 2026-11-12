@@ -131,7 +131,13 @@ function ok(name, cond, extra) {
     Array.from(view().querySelectorAll('.kw-col')).every(c => /暂无事项/.test(c.textContent)));
   ok('概览不再有「今天要处理」旧卡片', view().textContent.indexOf('今天要处理') < 0);
   await go('dashboard');
-  ok('看板「暂无趋势数据」空态', view().textContent.indexOf('暂无趋势数据') >= 0);
+  /* ★ 2026-11-12 v1.3.9：看板默认按月，空数据也要有范围条且月份停在当月 */
+  ok('空数据看板有年/月范围条且默认当月',
+    !!view().querySelector('.js-dash-range') &&
+    !!view().querySelector('.js-m-sel') &&
+    view().querySelector('.js-m-sel').value === SD.utils.ym(SD.app.state.summary.today),
+    (view().querySelector('.js-m-sel') || {}).value);
+  ok('空数据看板「暂无趋势数据」空态', view().textContent.indexOf('暂无趋势数据') >= 0);
   /* ★ 2026-11-10：各部门趋势改为「隐患照片」口径，空态文案随之变更；
      另新增「各部门隐患照片」汇总区块，空态同为「暂无隐患照片」 */
   ok('看板「暂无隐患照片」空态（照片口径）', view().textContent.indexOf('暂无隐患照片') >= 0,
@@ -141,6 +147,13 @@ function ok(name, cond, extra) {
   /* ★ 2026-11-12：KPI 整体从台账口径切到巡检口径，首卡由「隐患照片」改为「隐患条数」 */
   ok('看板 KPI 首卡改为「隐患条数」',
     /隐患条数/.test((view().querySelector('.grid.cols-4 > *') || {}).textContent || ''));
+  /* ★ 2026-11-12 v1.3.9：月档带环比，但没有数据时**不能出现百分比**（除以 0 就是编数） */
+  ok('空数据看板环比写「上月 0 条」且不出百分比',
+    (() => {
+      const d = Array.from(view().querySelectorAll('.stat-delta')).map(x => x.textContent).join(' ');
+      return /上月\s*0\s*条/.test(d) && !/%/.test(d);
+    })(),
+    Array.from(view().querySelectorAll('.stat-delta')).map(x => x.textContent).join(' | ').slice(0, 120));
   ok('看板 KPI 不再统计台账（无「已闭环 / 延期跟进」）', (() => {
     const t = Array.from(view().querySelectorAll('.grid.cols-4 > *'))
       .map(c => c.textContent).join(' ');

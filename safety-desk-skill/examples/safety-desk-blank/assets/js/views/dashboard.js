@@ -1,10 +1,10 @@
 /* =========================================================
    views/dashboard.js — 数据看板（模块 6）
    ────────────────────────────────────────────────────────
-   · 关键数字（隐患条数 / 已整改 / 逾期未整改 / 整改率）
+   · 关键数字（隐患条数 / 已整改 / 逾期未整改 / 整改率）+ 月档环比
    · 安全巡检（隐患与整改）—— 未设期限 / 及时率 / 最长逾期 + 分部门逾期
-   · 巡检隐患条数趋势（近 12 个月，上报 / 已整改两条线）
-   · 各部门隐患照片趋势（近 12 个月，按部门折线，可多选对比）
+   · 巡检隐患条数趋势（年档=1–12 月 / 月档=该月逐日，上报 / 已整改两条线）
+   · 各部门隐患照片趋势（同年档/月档的横轴，按部门折线，可多选对比）
    · 各部门隐患照片汇总（横向条形，按照片张数降序）
    · 隐患类型分布（环形，巡检口径，计「次」）
    · 巡检隐患等级分布（环形，巡检口径，计「条」）
@@ -24,6 +24,13 @@
      inspectionPhotos 内部（各筛一次容易漏，所以只在那两处筛），趋势横轴改成本年度 1–12 月。
      页面顶部的「统计范围」横幅与口径说明第四段写明这条边界，避免数字变小时被当成丢数据。
 
+   ★ 2026-11-12 v1.3.9 按月察看（用户要求）：顶部「按月 / 看年度」两档，**默认按月**。
+     · 月档：`metrics.inspectionStats(data, today, {ym})` 现算，横轴该月逐日，KPI 加环比；
+     · 年档：**必须读 `ctx.summary`**（禁止现算），与巡检页 `.js-insp-sum` 同值靠这一点；
+     · 区间状态存 `filters.dashboard.{mode,ym}`（内存态，刷新回当月，不落库）。
+     ⚠️ 月档「已整改」曲线是**事件窗口**（本月改完的都算，含跨月补完），KPI 的「已整改」
+        仍是本月记录，两者不等属正常 —— 系列名与图例必须把这个差异写出来。
+
    ★ 三条去重约束（改之前先读，否则会打挂冒烟测试）：
      ① 顶部 KPI 只用 `.grid.cols-4` 一处分组，且必须正好 4 张
         （测试按 `.grid.cols-4 > *` 全文档递归计数，多一个容器就变成 8）。
@@ -42,8 +49,19 @@ SD.views.dashboard = (function () {
   /* 等级配色：与台账等级图沿用同一套（红 / 橙 / 黄 / 灰），换页面也认得出来 */
   var LV_COLOR = { major: '#d92d20', large: '#e06c00', general: '#a97600', '': '#8b9ba0' };
 
-  function sub(s) {
+  function sub(s, state) {
     if (!s) return '';
+    /* ★ 2026-11-12 v1.3.9：看板默认「按月」，页头副标题也要跟着变，否则进页面第一眼
+       看到的还是年度数字，和下面的月度 KPI 打架。
+       只认第 2 参：不传 state（导航摘要、老测试）时仍走年度分支，行为向后兼容。 */
+    var fD = state && state.filters && state.filters.dashboard;
+    if (state && state.data && (!fD || fD.mode !== 'year')) {
+      var R0 = SD.metrics.inspectionRange(s.today, fD && fD.ym);
+      var st0 = SD.metrics.inspectionStats(state.data, s.today, { ym: R0.ym });
+      var ip0 = SD.metrics.inspectionPhotos(state.data, s.today, { ym: R0.ym });
+      return R0.label + ' · 巡检记录 ' + (st0.records || 0) + ' 项 · 隐患 ' + st0.hazardCount +
+        ' 条 · 隐患照片 ' + ip0.totalPhotos + ' 张';
+    }
     var ip = s.inspectionPhotos || { totalPhotos: 0 };
     var st = s.inspectionStats || { hazardCount: 0, records: 0 };
     /* 页面副标题只讲巡检。记录数放在这里，是因为顶部 4 张 KPI 已经让给
@@ -54,16 +72,83 @@ SD.views.dashboard = (function () {
       st.hazardCount + ' 条 · 隐患照片 ' + ip.totalPhotos + ' 张';
   }
 
+  /* ---------------- 环比文案（★ 2026-11-12 v1.3.9 月视图） ----------------
+     三条边界都覆盖，**宁可不给百分比，也不编数**：
+       · 上月 0 → 除以 0 无意义，写「较上月新增 N 条（上月 0 条）」
+       · 双方 0 → 「与上月持平（上月 0 条）」
+       · 本月 0 / 上月无隐患基数 → 整改率另有分支（见 deltaRate）
+     着色按**好坏**（goodWhenUp），不按数值方向：已整改上升是好事，不该涂红。 */
+  function deltaCount(cur, prev, goodWhenUp, unit) {
+    unit = unit || '条';
+    if (!prev) {
+      if (!cur) return { text: '与上月持平（上月 0 ' + unit + '）', tone: '' };
+      return { text: '较上月新增 ' + cur + ' ' + unit + '（上月 0 ' + unit + '）',
+               tone: goodWhenUp ? 'good' : 'bad' };
+    }
+    var d = cur - prev;
+    if (!d) return { text: '与上月持平（上月 ' + prev + ' ' + unit + '）', tone: '' };
+    var pct = Math.round(Math.abs(d) / prev * 100);
+    return { text: '较上月 ' + (d > 0 ? '+' : '-') + pct + '%（上月 ' + prev + ' ' + unit + '）',
+             tone: (d > 0) === !!goodWhenUp ? 'good' : 'bad' };
+  }
+
+  /** 整改率环比用「个百分点」不用相对变化：33%→50% 是 +17 个百分点，
+      说「+51.5%」会被读成"整改率涨了一半"，实际只涨 17 个点。 */
+  function deltaRate(cur, prev, prevHazard) {
+    if (cur == null) {
+      return { text: prevHazard ? '本月暂无隐患（上月 ' + U.pct(prev, 1, 0) + '）' : '本月暂无隐患', tone: '' };
+    }
+    if (!prevHazard || prev == null) return { text: '上月无数据（无可比基数）', tone: '' };
+    var pp = (cur - prev) * 100;
+    if (Math.abs(pp) < 0.05) return { text: '与上月持平（上月 ' + U.pct(prev, 1, 0) + '）', tone: '' };
+    return {
+      text: '较上月 ' + (pp > 0 ? '+' : '-') + Math.abs(pp).toFixed(1) + ' 个百分点（上月 ' +
+        U.pct(prev, 1, 0) + '）',
+      tone: pp > 0 ? 'good' : 'bad'
+    };
+  }
+
+  /** 归一筛选态：mode 只认 month / year，ym 必须是合法且不晚于当月的 'YYYY-MM' */
+  function normDash(fD, today) {
+    var cur = U.ym(today);
+    if (fD.mode !== 'year') fD.mode = 'month';
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(fD.ym || ''))) fD.ym = cur;
+    if (fD.ym > cur) fD.ym = cur;              // 未来月 → 当月
+    if (fD.ym < '2000-01') fD.ym = cur;        // 明显脏值 → 当月
+    return fD;
+  }
+
   function render(host, ctx) {
     var s = ctx.summary;
-    var ip = s.inspectionPhotos || { totalPhotos: 0, totalTasks: 0, totalRecords: 0, byDept: [], trend: { months: [], depts: [] } };
-    var st = s.inspectionStats || {
-      records: 0, byStatus: { planned: 0, done: 0, rescheduled: 0, cancelled: 0 },
-      hazardCount: 0, hazardTasks: 0, byLevel: [], byDept: [],
-      fix: { none: 0, doing: 0, done: 0 }, fixRate: null,
-      due: { doneOnTime: 0, doneLate: 0, doneNoDue: 0, openOverdue: 0, openInDue: 0, openNoDue: 0 },
-      dueMaxDays: 0, noDue: { count: 0 }, trend: []
-    };
+
+    /* ---------- 统计范围：年 / 月双档（★ 2026-11-12 v1.3.9） ----------
+       月档是**默认**：进入看板先看当月。年档保留（「看年度」），语义与 v1.3.8 完全一致。
+       ⚠️ 年档必须读 `s.inspectionStats`（summary 快照），**不许现算**：
+          巡检页顶部 `.js-insp-sum` 读的就是这一份，两页同值是结构保证。
+       月档才用 `ctx.state.data` 现算，且与年档走**同一个** statsOf/photosOf。 */
+    var fD = normDash(ctx.state.filters.dashboard = ctx.state.filters.dashboard || {}, s.today);
+    var monthMode = fD.mode === 'month';
+    var R = SD.metrics.inspectionRange(s.today, monthMode ? fD.ym : '');
+
+    var ip = monthMode ? SD.metrics.inspectionPhotos(ctx.state.data, s.today, { ym: R.ym })
+                       : (s.inspectionPhotos || { totalPhotos: 0, totalTasks: 0, totalRecords: 0, byDept: [], trend: { months: [], depts: [] } });
+    var st = monthMode ? SD.metrics.inspectionStats(ctx.state.data, s.today, { ym: R.ym })
+                       : (s.inspectionStats || {
+                           records: 0, byStatus: { planned: 0, done: 0, rescheduled: 0, cancelled: 0 },
+                           hazardCount: 0, hazardTasks: 0, byLevel: [], byDept: [],
+                           fix: { none: 0, doing: 0, done: 0 }, fixRate: null,
+                           due: { doneOnTime: 0, doneLate: 0, doneNoDue: 0, openOverdue: 0, openInDue: 0, openNoDue: 0 },
+                           dueMaxDays: 0, noDue: { count: 0 }, trend: []
+                         });
+    var stPrev = monthMode ? SD.metrics.inspectionStats(ctx.state.data, s.today, { ym: R.prevYm }) : null;
+    var monthList = SD.metrics.inspectionMonthsOf(ctx.state.data);
+    if (monthMode && !monthList.some(function (m) { return m.ym === fD.ym; })) {
+      /* 脏值 / 数据被删后残留的月份：把当前选中项补进列表，让下拉如实显示，
+         而不是悄悄跳走（悄悄跳会被当成「我的数据丢了」） */
+      monthList.push({ ym: fD.ym, records: 0 });
+      monthList.sort(function (a, b) { return a.ym < b.ym ? 1 : -1; });
+    }
+
     var due = st.due || { doneOnTime: 0, doneLate: 0, doneNoDue: 0, openOverdue: 0, openInDue: 0, openNoDue: 0 };
     var noDueN = (st.noDue && st.noDue.count) || 0;
     /* 整改及时率：分母只含「已设期限且已整改」的条数（按期 + 超期），
@@ -79,31 +164,93 @@ SD.views.dashboard = (function () {
 
     U.clear(host);
 
-    /* ---------- 统计范围横幅（★ 2026-11-12 新增） ----------
-       用户要求「看板只统计当前自然年，跨年数据不计入」。口径收窄必须**写出来**：
-       否则用户看到数字比上个月小了，第一反应是"数据丢了"，而不是"跨年了"。
-       放在 KPI 之前，一眼就能看到这一页的边界。
+    /* ---------- 范围条（★ 2026-11-12 v1.3.9 由静态横幅改造） ----------
+       口径收窄/切换必须**写出来**：否则用户看到数字变了，第一反应是"数据丢了"。
        ⚠️ 不能放进 .grid.cols-4（测试按 `.grid.cols-4 > *` 全文档计数，塞进去就变 5 张）。 */
     var CY = st.year || String(s.today || '').slice(0, 4);
-    var allN = st.recordsAll;
-    var allNote = (allN != null && allN !== st.records)
-      ? '　全库共 <b class="t-2">' + allN + '</b> 项巡检记录，其中 ' + U.esc(CY) + ' 年 <b class="t-2">' +
-        st.records + '</b> 项。'
-      : '';
-    host.appendChild(U.h(
-      '<div class="t-3 t-sm js-year-scope" style="margin:0 0 10px">' +
-        '<b class="t-2">统计范围：' + U.esc(CY) + ' 年</b>（1–12 月，按巡检计划日期归年）；' +
-        '跨年记录不计入本页任何数字。' + allNote +
-      '</div>'
-    ));
 
-    /* ---------- 顶部关键数字（★ 2026-11-12 全巡检口径） ----------
-       四张全部来自 s.inspectionStats，不再混台账。
+    function scopeText() {
+      if (monthMode) {
+        var allN2 = st.recordsAll;
+        return '<b class="t-2">统计范围：' + U.esc(R.label) + '</b>（按巡检计划日期归月，当月 <b class="t-2">' +
+          st.records + '</b> 项）；跨年记录不计入本页任何数字。' +
+          (allN2 != null && allN2 !== st.records ? '　全库共 <b class="t-2">' + allN2 + '</b> 项巡检记录。' : '');
+      }
+      var allNote = (st.recordsAll != null && st.recordsAll !== st.records)
+        ? '　全库共 <b class="t-2">' + st.recordsAll + '</b> 项巡检记录，其中 ' + U.esc(CY) + ' 年 <b class="t-2">' +
+          st.records + '</b> 项。'
+        : '';
+      return '<b class="t-2">统计范围：' + U.esc(CY) + ' 年</b>（1–12 月，按巡检计划日期归年）；' +
+        '跨年记录不计入本页任何数字。' + allNote;
+    }
+
+    function monthBoxHtml() {
+      /* 年档**不渲染**这块，而不是渲染完再 `hidden`：
+         `.dash-range .js-dash-month{ display:flex }` 会盖掉 `[hidden]` 的 display:none
+         （作者样式优先于 UA 样式），结果「切年度」后月份条还明晃晃挂在上面 ——
+         这是上一版实测到的坑，别再用 hidden 做显隐。 */
+      if (!monthMode) return '';
+      var opts = monthList.map(function (m) {
+        return '<option value="' + U.esc(m.ym) + '"' + (m.ym === fD.ym ? ' selected' : '') + '>' +
+          U.esc(m.ym.slice(0, 4)) + ' 年 ' + Number(m.ym.slice(5)) + ' 月 · ' + m.records + ' 项</option>';
+      }).join('');
+      /* 当月一条都没有、但上月有数据时，给个一键跳转 —— 月初进来看空页最容易被当成故障 */
+      var prevHit = monthList.filter(function (m) { return m.ym === R.prevYm; })[0];
+      var jump = (monthMode && !st.records && prevHit && prevHit.records)
+        ? '<button type="button" class="btn sm ghost js-m-go" data-ym="' + U.esc(prevHit.ym) + '">' +
+          '上月有 ' + prevHit.records + ' 项 ›</button>'
+        : '';
+      return '<div class="fg js-dash-month">' +
+        '<button type="button" class="btn sm ghost js-m-prev" title="上一月（只走有数据的月份）">‹</button>' +
+        '<select class="ctl-select js-m-sel" data-keep-focus="dash-month" title="选择月份（只列出有数据的年月）">' +
+          opts + '</select>' +
+        '<button type="button" class="btn sm ghost js-m-next" title="下一月（只走有数据的月份）">›</button>' +
+        (fD.ym === U.ym(s.today) ? '' : '<button type="button" class="btn sm ghost js-m-now">回到本月</button>') +
+        jump + '</div>';
+    }
+
+    var rangeBar = U.h(
+      '<div class="filters dash-range js-dash-range">' +
+        '<div class="chip-group js-dash-mode">' +
+          '<button type="button" class="chip' + (monthMode ? ' on' : '') + '" data-mode="month">按月</button>' +
+          '<button type="button" class="chip' + (monthMode ? '' : ' on') + '" data-mode="year">看年度</button>' +
+        '</div>' +
+        monthBoxHtml() +
+        '<span class="spacer"></span>' +
+        '<div class="t-3 t-sm js-year-scope">' + scopeText() + '</div>' +
+      '</div>'
+    );
+
+    rangeBar.addEventListener('click', function (e) {
+      var chip = e.target.closest('[data-mode]');
+      if (chip) {
+        fD.mode = chip.getAttribute('data-mode') === 'year' ? 'year' : 'month';
+        ctx.refresh();
+        return;
+      }
+      var jump = e.target.closest('.js-m-go');
+      if (jump) { fD.ym = jump.getAttribute('data-ym'); ctx.refresh(); return; }
+      if (e.target.closest('.js-m-now')) { fD.ym = U.ym(s.today); ctx.refresh(); return; }
+      var back = e.target.closest('.js-m-prev'), fwd = e.target.closest('.js-m-next');
+      if (!back && !fwd) return;
+      /* 列表是倒序（新 → 旧）：‹ 上一月 = 索引 +1（更早），› 下一月 = 索引 -1 */
+      var idx = monthList.map(function (m) { return m.ym; }).indexOf(fD.ym);
+      var j = idx + (back ? 1 : -1);
+      if (j >= 0 && j < monthList.length) { fD.ym = monthList[j].ym; ctx.refresh(); }
+    });
+    var mSel = rangeBar.querySelector('.js-m-sel');
+    if (mSel) mSel.addEventListener('change', function () {
+      var v = String(mSel.value || '');
+      if (/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) { fD.ym = v; ctx.refresh(); }
+    });
+    host.appendChild(rangeBar);
+
+    /* ---------- 顶部关键数字（★ 2026-11-12 全巡检口径；v1.3.9 月档加环比） ----------
+       四张全部来自 st（年档=summary 快照 / 月档=现算的同一函数），不再混台账。
        原来这里第二、三、四张是台账的「已闭环 / 逾期未闭环 / 延期跟进」，
        而下方「安全巡检」段里又摆了一遍「已整改 / 整改率」—— 同一组数字在
        一屏里出现两次，这就是本轮要消掉的重复项。现在 KPI 只留一处。 */
-    var kpi = U.h('<div class="grid cols-4"></div>');
-    SD.comp.statCard.renderAll(kpi, [
+    var kpiCards = [
       { label: '隐患条数', value: st.hazardCount, unit: '条', icon: 'inspection', tone: '',
         foot: st.hazardTasks ? st.hazardTasks + ' 项巡检任务上报' : '暂无上报' },
       { label: '已整改', value: st.fix.done, unit: '条', icon: 'check', tone: 'green',
@@ -115,7 +262,17 @@ SD.views.dashboard = (function () {
         footTone: due.openOverdue ? 'up' : '', foot: overdueFoot },
       { label: '整改率', value: st.fixRate == null ? null : U.pct(st.fixRate, 1, 0), unit: '',
         icon: 'clock', tone: '', foot: '已整改 / 隐患条数（不按任务数）' }
-    ]);
+    ];
+    /* 环比只在月档给：年度数字「较上月」没有意义，也会打乱年档的既有断言 */
+    if (monthMode && stPrev) {
+      var dTone = [ deltaCount(st.hazardCount, stPrev.hazardCount, false),
+                    deltaCount(st.fix.done, stPrev.fix.done, true),
+                    deltaCount(due.openOverdue, (stPrev.due || {}).openOverdue || 0, false),
+                    deltaRate(st.fixRate, stPrev.fixRate, stPrev.hazardCount) ];
+      dTone.forEach(function (d, i) { kpiCards[i].delta = d.text; kpiCards[i].deltaTone = d.tone; });
+    }
+    var kpi = U.h('<div class="grid cols-4"></div>');
+    SD.comp.statCard.renderAll(kpi, kpiCards);
     host.appendChild(kpi);
 
     /* ---------- 安全巡检（隐患与整改）（★ 2026-11-12 重排） ----------
@@ -136,8 +293,9 @@ SD.views.dashboard = (function () {
     var inspCard = U.h(
       '<section class="card">' +
         '<div class="card-head"><div><h3>安全巡检（隐患与整改）</h3>' +
-          '<div class="sub">' + U.esc(CY) + ' 年度，按「整改期限」逐行判定：<b>有期限、期限已过、又没填整改日期 = 逾期</b>；' +
-          '没设期限的单独计一格，既不判逾期也不判按期</div></div></div>' +
+          '<div class="sub">' + U.esc(R.label) + '，按「整改期限」逐行判定：<b>有期限、期限已过、又没填整改日期 = 逾期</b>；' +
+          '没设期限的单独计一格，既不判逾期也不判按期；' +
+          (monthMode ? '<b>逾期天数截至今天</b>' : '') + '</div></div></div>' +
         '<div class="grid cols-2">' +
           '<div><div class="rpt-kv js-insp-kv"></div><div class="js-insp-dept-host"></div></div>' +
           '<div class="js-insp-due"></div>' +
@@ -152,7 +310,7 @@ SD.views.dashboard = (function () {
         { k: '整改及时率', v: onTimeRate == null ? '—' : U.pct(onTimeRate, 1, 0),
           note: onTimeBase ? '在已设期限且已整改的 ' + onTimeBase + ' 条中算' : '暂无已设期限的整改' },
         { k: '最长逾期', v: due.openOverdue ? (st.dueMaxDays || 0) + ' 天' : '—',
-          note: due.openOverdue ? '未整改里最久的一条'
+          note: due.openOverdue ? ('未整改里最久的一条' + (monthMode ? '（截至今天）' : ''))
             : (st.hazardCount && noDueN === st.hazardCount ? '尚未设置整改期限' : '当前没有逾期') }
       ].forEach(function (x, i, arr) {
         /* 三格在 .rpt-kv（auto-fill 180px）里会排成 2 + 1，最后一格独占一行更整齐，
@@ -212,22 +370,57 @@ SD.views.dashboard = (function () {
 
     /* ---------- 巡检隐患条数趋势（★ 2026-11-12 原「隐患趋势」改口径） ----------
        原来读台账（新增 / 闭环），现在读巡检：上报 / 已整改。
-       两条线**归月依据不同**（上报按计划日期、已整改按行整改日期），
-       所以某月「已整改 > 上报」是正常的（上月发现、本月改完），副标题要写明，
+       两条线**归期依据不同**（上报按计划日期、已整改按行整改日期），
+       所以某期「已整改 > 上报」是正常的（上月发现、本月改完），副标题要写明，
        否则用户第一眼就会当成算错。
-       ★ 2026-11-12：横轴由「滚动近 12 个月」改为「本年度 1–12 月」——
-         看板只统计当前自然年，把上一年 12 月画进来会出现一根恒为 0 的柱子。
-         图例也只写「本年度」，不写「合计」：跨年的整改条数不在图里，写"合计"会误导。 */
+       ★ 2026-11-12 v1.3.9：年档横轴 = 本年度 1–12 月；月档横轴 = 该月逐日。
+         月档的「已整改」是**事件窗口**（本月改完的都算，含上月上报的），
+         所以它可能大于本月「上报」，图例里单独说明补进来的条数（fixedCarryIn）。
+         年档保持 containment（与 v1.3.8 一致），不改成事件窗口 —— 那会改掉既有数字。 */
     var trend = st.trend || [];
+    var daily = st.daily || [];
     var trendCard = U.h(
       '<section class="card">' +
         '<div class="card-head"><div><h3>巡检隐患条数趋势</h3>' +
-        '<div class="sub">' + U.esc(CY) + ' 年各月巡检<b>上报</b>与<b>已整改</b>的隐患条数（单位：条）；' +
-        '上报按计划日期归月、已整改按整改日期归月，两者不同月属正常</div></div></div>' +
+        '<div class="sub">' + (monthMode
+          ? U.esc(R.label) + '各日巡检<b>上报</b>与<b>已整改</b>的隐患条数（单位：条）；' +
+            '上报按计划日期归日、已整改按整改日期归日，两者不同日属正常'
+          : U.esc(CY) + ' 年各月巡检<b>上报</b>与<b>已整改</b>的隐患条数（单位：条）；' +
+            '上报按计划日期归月、已整改按整改日期归月，两者不同月属正常') +
+        '</div></div></div>' +
         '<div class="js-chart"></div><div class="js-legend"></div>' +
       '</section>'
     );
-    if (!trend.length) {
+    if (monthMode) {
+      /* 月档：逐日。全 0 时 st.daily 是空数组 → 空态 */
+      if (!daily.length) {
+        trendCard.querySelector('.js-chart').appendChild(
+          SD.comp.state.build('empty', {
+            title: '暂无趋势数据',
+            desc: '本月还没有填写「隐患条数」的巡检记录，切到别的月份或先登记一条。'
+          }));
+      } else {
+        var dFound = daily.reduce(function (a, b) { return a + (b.found || 0); }, 0);
+        var dFixed = daily.reduce(function (a, b) { return a + (b.fixed || 0); }, 0);
+        var carry = st.fixedCarryIn || 0;
+        trendCard.querySelector('.js-chart').innerHTML = SD.comp.chart.lineChart({
+          labels: daily.map(function (d) { return d.date; }),
+          xFormat: function (lb) { return Number(String(lb).slice(8, 10)) + ' 日'; },
+          xStep: Math.max(1, Math.ceil(daily.length / 8)),   // 30 天 → 4，约 8 个刻度
+          height: 230,
+          unit: ' 条',
+          series: [
+            { name: '上报', color: '#d92d20', data: daily.map(function (d) { return d.found || 0; }) },
+            { name: '已整改（按整改日期）', color: '#12805c', data: daily.map(function (d) { return d.fixed || 0; }) }
+          ]
+        });
+        trendCard.querySelector('.js-legend').innerHTML = SD.comp.chart.legend([
+          { name: '本月上报合计', color: '#d92d20', value: dFound + ' 条' },
+          { name: '本月改完合计' + (carry ? '（其中 ' + carry + ' 条来自上月及以前上报）' : ''),
+            color: '#12805c', value: dFixed + ' 条' }
+        ]);
+      }
+    } else if (!trend.length) {
       trendCard.querySelector('.js-chart').appendChild(
         SD.comp.state.build('empty', { title: '暂无趋势数据', desc: '在「安全巡检」里填写「隐患条数」后，趋势图会按月份自动汇总。' }));
     } else {
@@ -250,11 +443,12 @@ SD.views.dashboard = (function () {
     host.appendChild(trendCard);
 
     /* ---------- 各部门隐患照片趋势 ----------
-       与全厂同窗口（本年度 1–12 月，按巡检计划日期归月）；部门线可多选对比，
-       默认勾选总量前 4 的部门，勾选状态记在 filters.dashboard，刷新不丢。 */
-    var pt = ip.trend || { months: [], depts: [] };
+       与全厂同窗口（年档=本年度 1–12 月 / 月档=该月逐日，都按巡检计划日期归期）；
+       部门线可多选对比，默认勾选总量前 4 的部门，勾选状态记在 filters.dashboard，刷新不丢。 */
+    var pt = monthMode ? (ip.daily || { labels: [], depts: [] })
+                       : (ip.trend || { months: [], depts: [] });
+    var ptLabels = monthMode ? (pt.labels || []) : (pt.months || []);
     var DEPT_COLORS = ['#0d7a72', '#2f8f9d', '#4fa3a5', '#6fb3a8', '#8c9bd6', '#a98cc4', '#c48fa0', '#d9a406', '#5b7fa6', '#b7c4c7'];
-    var fD = (ctx.state.filters.dashboard = ctx.state.filters.dashboard || {});
     if (!Array.isArray(fD.depts)) fD.depts = [];
     /* 首次拿到部门数据时补默认勾选（总量前 4）。
        不能只判断「fD.depts 是不是数组」—— 打开看板时如果还没有隐患照片，
@@ -264,6 +458,16 @@ SD.views.dashboard = (function () {
     if (!fD.deptsInited && pt.depts.length) {
       fD.depts = pt.depts.slice(0, 4).map(function (d) { return d.dept; });
       fD.deptsInited = true;
+    }
+    /* ★ 2026-11-12 v1.3.9：切月/切档后，上月勾的部门这个月可能一张照片都没有。
+       被下面的 exist 过滤掉之后就成了「选一个部门开始对比」，像是坏了。
+       用 ymSeen 记「上一次渲染是哪个区间」，**只在区间刚变的那一帧**补默认勾选，
+       之后照旧完全尊重用户自己的选择（包括全部取消）。 */
+    var scopeKey = monthMode ? ('m:' + R.ym) : ('y:' + CY);
+    var scopeChanged = fD.scopeSeen !== scopeKey;
+    if (scopeChanged) {
+      fD.scopeSeen = scopeKey;
+      if (pt.depts.length) fD.depts = pt.depts.slice(0, 4).map(function (d) { return d.dept; });
     }
     var exist = {};
     pt.depts.forEach(function (d) { exist[d.dept] = 1; });
@@ -275,7 +479,8 @@ SD.views.dashboard = (function () {
     var deptTrendCard = U.h(
       '<section class="card">' +
         '<div class="card-head"><div><h3>各部门隐患照片趋势</h3>' +
-        '<div class="sub">' + U.esc(CY) + ' 年各月巡检上传的隐患照片（单位：张）；点部门名增减对比，默认总量前 ' + Math.min(4, pt.depts.length) + '</div></div>' +
+        '<div class="sub">' + (monthMode ? U.esc(R.label) + '各日' : U.esc(CY) + ' 年各月') +
+        '巡检上传的隐患照片（单位：张）；点部门名增减对比，默认总量前 ' + Math.min(4, pt.depts.length) + '</div></div>' +
         '<div class="js-dept-chips chip-group"></div></div>' +
         '<div class="js-chart"></div><div class="js-legend"></div>' +
       '</section>'
@@ -298,20 +503,27 @@ SD.views.dashboard = (function () {
       deptTrendCard.querySelector('.js-chart').appendChild(
         SD.comp.state.build('empty', {
           title: '暂无隐患照片',
-          desc: '在「安全巡检 → 新增巡检任务」里上传隐患照片后，这里会按部门 × 月份自动汇总。'
+          desc: monthMode
+            ? '本月还没有上传隐患照片的巡检记录，切到别的月份看看。'
+            : '在「安全巡检 → 新增巡检任务」里上传隐患照片后，这里会按部门 × 月份自动汇总。'
         }));
     } else if (!picked.length) {
       deptTrendCard.querySelector('.js-chart').appendChild(
         SD.comp.state.build('empty', { title: '选一个部门开始对比', desc: '点右上角部门名把它加进折线图。' }));
     } else {
-      deptTrendCard.querySelector('.js-chart').innerHTML = SD.comp.chart.lineChart({
-        labels: pt.months,
+      var deptChart = {
+        labels: ptLabels,
         height: 230,
         unit: ' 张',            /* ★ 2026-11-11：原来没传，tooltip 落成「条」，与「张」对不上 */
         series: picked.map(function (d) {
           return { name: d.dept, color: colorOf[d.dept], data: d.data };
         })
-      });
+      };
+      if (monthMode) {
+        deptChart.xFormat = function (lb) { return Number(String(lb).slice(8, 10)) + ' 日'; };
+        deptChart.xStep = Math.max(1, Math.ceil(ptLabels.length / 8));
+      }
+      deptTrendCard.querySelector('.js-chart').innerHTML = SD.comp.chart.lineChart(deptChart);
       deptTrendCard.querySelector('.js-legend').innerHTML = SD.comp.chart.legend(
         picked.map(function (d) {
           return { name: d.dept + ' 合计', color: colorOf[d.dept], value: d.total + ' 张' };
@@ -486,12 +698,20 @@ SD.views.dashboard = (function () {
       '与「各部门隐患照片」能把同一张单拆到不同部门，而副标题里的「巡检记录 N 项」仍是单据数，不会被拆成多张。' +
       '老记录没有明细，自动视为<b>一行</b>，历史数字一个不变。' +
       '<b>巡检隐患不会自动生成隐患台账记录</b>，所以本页只讲巡检，不折算台账。</div>' +
-      '<div style="margin-top:4px"><b>四、统计范围（2026-11-12）</b>　本页<b>只统计当前自然年</b>：' +
-      '按巡检<b>计划日期</b>归年，跨年记录<b>不计入</b> KPI、隐患条数、整改三态、整改期限、' +
-      '隐患照片、类型分布、等级分布、各部门条数与整改率、以及两张趋势图的任何一项；' +
+      '<div style="margin-top:4px"><b>四、统计范围（年 / 月两档，2026-11-12 v1.3.9）</b>　' +
+      '本页顶部可切<b>「按月」</b>（默认，进入即当月）与<b>「看年度」</b>：' +
+      '<b>年档只统计当前自然年</b>（按巡检计划日期归年），跨年记录<b>不计入</b> KPI、隐患条数、整改三态、' +
+      '整改期限、隐患照片、类型分布、等级分布、各部门条数与整改率、以及两张趋势图的任何一项；' +
       '趋势横轴就是本年度 1–12 月，不再滚动取近 12 个月。' +
-      '往年记录不会消失 —— 到「安全巡检」列表用<b>年份下拉</b>即可查看，那是列表的视图过滤，不进看板；' +
-      '看板副标题与各段标题都带年份，跨年后一眼能看出这一屏是哪一年的数。</div>' +
+      '<b>月档只统计所选自然月</b>（按计划日期归月），横轴为该月逐日；月份下拉列出<b>有数据的年月</b>，' +
+      '可以回看往年 —— 回看是显式选择，不影响年档「只算当年」的口径。' +
+      '往年记录也不会消失：到「安全巡检」列表用<b>年份下拉</b>即可查看，那是列表的视图过滤，不进看板。<br>' +
+      '<b>月档的两个额外口径</b>：① <b>环比</b>对比「上一个自然月」，上月 0 条时不给百分比（除以 0 就是编数），' +
+      '只写具体条数；整改率用「个百分点」不用相对变化。' +
+      '② 趋势图的<b>已整改</b>线按<b>整改日期</b>归日、且含<b>跨月补完</b>（上月上报、本月改完的也画进来），' +
+      '所以它可能大于本月「上报」；KPI 里的「已整改」仍是「本月上报且已整改」，两者不等属正常，' +
+      '图例会单独标出补进来的条数。<b>逾期与最长逾期按「截至今天」判定</b>：看的是「该月上报的隐患到现在还剩多少没改」，' +
+      '不是「该月月底快照」，因此回看往年月份时逾期条数可能大于当时，属正常。</div>' +
       '<div style="margin-top:4px">两条口径（照片<b>张数</b> / 隐患<b>条数</b>）在页面各段标题里已分别注明，不混算；' +
       '台账数字只保留上面一行快照。</div>' +
       '</section>'

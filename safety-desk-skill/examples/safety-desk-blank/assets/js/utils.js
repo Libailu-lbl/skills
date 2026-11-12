@@ -65,6 +65,24 @@ SD.utils = (function () {
     return d.getFullYear() + '-' + pad(d.getMonth() + 1);
   };
 
+  /* ---------------- 月份边界（★ 2026-11-12 看板月视图） ----------------
+     ⚠️ 某月天数**必须用 Date(y, m, 0) 求**（m 是 1-based，第 0 天 = 上月最后一天）：
+        写死 30 / 31 / 28 会在 2 月与小月上错，而且闰年会错两处。
+        这几个函数是纯字符串 → 字符串，不经过时区转换，避免 UTC 偏移导致差一天。 */
+  /** 'YYYY-MM' → 该月天数（28/29/30/31） */
+  U.daysInMonth = function (ym) {
+    var m = /^(\d{4})-(\d{2})/.exec(String(ym || ''));
+    if (!m) return 0;
+    return new Date(+m[1], +m[2], 0).getDate();
+  };
+  /** 'YYYY-MM' → 该月首日 'YYYY-MM-DD' */
+  U.startOfMonth = function (ym) { return U.ym(ym) + '-01'; };
+  /** 'YYYY-MM' → 该月最后一天 'YYYY-MM-DD' */
+  U.endOfMonth = function (ym) {
+    var d = U.daysInMonth(ym);
+    return d ? U.ym(ym) + '-' + pad(d) : '';
+  };
+
   /** 展示用：'10月15日' */
   U.fmtCN = function (s) {
     var d = U.parse(s); if (!d) return '—';

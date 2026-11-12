@@ -1097,6 +1097,35 @@ function ok(name, cond, extra) {
 
   await go('dashboard');
   await wait(500);
+
+  /* ---- 17.0 默认 = 按月（★ 2026-11-12 v1.3.9）----
+     看板改成「月为主、可切年」后，进页面第一屏是当月口径，年度断言必须切档后再做。 */
+  const mBar = view().querySelector('.js-dash-range');
+  ok('看板顶部有年/月范围条', !!mBar);
+  const mOn = mBar ? mBar.querySelector('.js-dash-mode .chip.on') : null;
+  ok('默认选中「按月」', !!mOn && /按月/.test(mOn.textContent), mOn ? mOn.textContent : '无');
+  const mSel0 = mBar ? mBar.querySelector('.js-m-sel') : null;
+  ok('月份下拉默认本月', !!mSel0 && mSel0.value === thisYM, mSel0 ? mSel0.value : '无');
+  const mScopeTxt = ((view().querySelector('.js-year-scope') || {}).textContent || '').replace(/\s+/g, ' ');
+  ok('月档统计范围写到月', new RegExp('统计范围：' + Y0 + ' 年 ' + Number(thisYM.slice(5)) + ' 月').test(mScopeTxt),
+    mScopeTxt.slice(0, 80));
+  ok('范围条不在 .grid.cols-4 内（KPI 仍 4 张）',
+    !view().querySelector('.grid.cols-4 .js-dash-range') &&
+    view().querySelectorAll('.grid.cols-4 > *').length === 4,
+    view().querySelectorAll('.grid.cols-4 > *').length);
+  const mKpi = Array.from(view().querySelectorAll('.grid.cols-4 > *')).map(c => c.textContent.replace(/\s+/g, ' '));
+  ok('月档 KPI 隐患条数 = 5 条（当年两条都在本月，去年 7 条不计）', /隐患条数\s*5\s*条/.test(mKpi[0]), mKpi[0].slice(0, 40));
+
+  /* ---- 17.1 切「看年度」：以下为原年度断言 ---- */
+  click2(view().querySelector('.js-dash-mode [data-mode="year"]'));
+  await wait(450);
+  /* 年档直接不渲染月份条：宁可少一个节点，也别用 hidden ——
+     `.js-dash-month{display:flex}` 会盖掉 [hidden]，实测会留在屏幕上 */
+  ok('切年度后不再渲染月份条', !view().querySelector('.js-dash-month'));
+  ok('切年度后不显示环比（年度数字「较上月」没有意义）', !view().querySelector('.stat-delta'));
+  ok('切年度后「看年度」变选中态',
+    /看年度/.test((view().querySelector('.js-dash-mode .chip.on') || {}).textContent || ''));
+
   const yCards = Array.from(view().querySelectorAll('.grid.cols-4 > *'))
     .map(c => c.textContent.replace(/\s+/g, ' '));
   ok('看板 KPI 隐患条数 = 5 条（跨年 7 条不计入）', /隐患条数\s*5\s*条/.test(yCards[0]), yCards[0].slice(0, 40));
@@ -1107,7 +1136,7 @@ function ok(name, cond, extra) {
     /跨年记录不计入/.test(scopeTxt) && /全库共\s*3\s*项/.test(scopeTxt), scopeTxt.slice(0, 120));
   const yTrendCard = Array.from(view().querySelectorAll('.card'))
     .find(c => /巡检隐患条数趋势/.test((c.querySelector('h3') || {}).textContent || ''));
-  ok('趋势卡副标题写明「当年各月」（不再是近 12 个月）',
+  ok('年档趋势卡副标题写明「当年各月」（不再是近 12 个月）',
     !!yTrendCard && new RegExp(Y0 + ' 年各月').test(yTrendCard.textContent) &&
     !/近 12 个月/.test(yTrendCard.textContent),
     yTrendCard ? yTrendCard.querySelector('.sub').textContent : '无');
@@ -1117,8 +1146,9 @@ function ok(name, cond, extra) {
     !!yPhotoCard && /合计 3 张/.test(yPhotoCard.textContent.replace(/\s+/g, ' ')),
     yPhotoCard ? (yPhotoCard.querySelector('.js-total') || {}).textContent : '无');
   const yNote = view().textContent.replace(/\s+/g, ' ');
-  ok('口径说明新增「四、统计范围」并写明只统计当年',
-    /四、统计范围/.test(yNote) && /只统计当前自然年/.test(yNote) && /不计入/.test(yNote));
+  ok('口径说明写明「四、统计范围」并覆盖年 / 月两档',
+    /四、统计范围/.test(yNote) && /只统计当前自然年/.test(yNote) && /不计入/.test(yNote) &&
+    /月档只统计所选自然月/.test(yNote));
   ok('看板副标题带年份', new RegExp(Y0 + ' 年').test(SD.views.dashboard.sub(SD.app.state.summary)),
     SD.views.dashboard.sub(SD.app.state.summary));
 
@@ -1144,6 +1174,174 @@ function ok(name, cond, extra) {
     ok('切到去年：列表能看到跨年那条（往年记录没被藏掉）',
       rowsLY.length === 1 && /FZXJ-/.test(rowsLY[0]) && /去年单据/.test(rowsLY[0]), rowsLY.join(' | '));
   }
+
+  /* ================= 18. 月视图：切月 / 逐日 / 环比 / 空月（★ 2026-11-12 v1.3.9） =================
+     用户要求：「在看板中新增按月维度的时间筛选与统计视图」。
+     这一节用「本月 2 条 + 上月 3 条（其中 1 条本月才改完）+ 去年同月 1 条」验证：
+     切月、逐日横轴、跨月补完、四条环比文案、历史月逾期基准、空月空态、切年回落。 */
+  console.log('== 18. 月视图：切月 / 逐日 / 环比 ==');
+  const curYM2 = t0.slice(0, 7);
+  const prevYM2 = SD.utils.shiftYM(curYM2, -1);
+  const lyYM2 = String(Number(t0.slice(0, 4)) - 1) + curYM2.slice(4);
+  const cd = n => curYM2 + '-' + (n < 10 ? '0' + n : n);
+  const pd = n => prevYM2 + '-' + (n < 10 ? '0' + n : n);
+
+  data().inspections = [
+    /* 本月：1 条本月改完（2 条）、1 条期限上月已过且未整改（3 条） */
+    { id: 'MV-C1', code: 'FZXJ-' + Y0 + '-701', planName: '本月已改', type: '日常巡检', area: 'W 区',
+      dept: '生产一部', executor: '测试员', scheduledDate: cd(3), status: 'done', completedAt: cd(3),
+      photos: shot(2), hazardCount: 2, hazardLevel: 'general', fixDueDate: cd(20), fixDate: cd(3), fixPhotos: [],
+      record: { findings: '2 条', hazardCount: 2, signedBy: '测试员', signedAt: cd(3) },
+      problems: [{ id: 'm1', dept: '生产一部', content: '本月改完', type: '消防', level: 'general', count: 2,
+        photos: shot(2), fixDueDate: cd(20), fixDate: cd(3), fixPhotos: [] }] },
+    { id: 'MV-C2', code: 'FZXJ-' + Y0 + '-702', planName: '本月逾期', type: '日常巡检', area: 'W 区',
+      dept: '仓储部', executor: '测试员', scheduledDate: cd(15), status: 'planned',
+      photos: shot(1), hazardCount: 3, hazardLevel: 'major', fixDueDate: pd(1), fixDate: '', fixPhotos: [],
+      problems: [{ id: 'm2', dept: '仓储部', content: '期限已过未改', type: '电气', level: 'major', count: 3,
+        photos: shot(1), fixDueDate: pd(1), fixDate: '', fixPhotos: [] }] },
+    /* 上月：1 条逾期未改（4 条）、1 条按期改完（1 条）、1 条上月发现本月改完（2 条 → 跨月补完） */
+    { id: 'MV-P1', code: 'FZXJ-' + Y0 + '-711', planName: '上月逾期', type: '日常巡检', area: 'X 区',
+      dept: '生产一部', executor: '测试员', scheduledDate: pd(20), status: 'planned',
+      photos: [], hazardCount: 4, hazardLevel: 'large', fixDueDate: pd(25), fixDate: '', fixPhotos: [],
+      problems: [{ id: 'm3', dept: '生产一部', content: '上月至今未改', type: '其它', level: 'large', count: 4,
+        photos: [], fixDueDate: pd(25), fixDate: '', fixPhotos: [] }] },
+    { id: 'MV-P2', code: 'FZXJ-' + Y0 + '-712', planName: '上月按期', type: '日常巡检', area: 'X 区',
+      dept: '仓储部', executor: '测试员', scheduledDate: pd(10), status: 'done', completedAt: pd(12),
+      photos: [], hazardCount: 1, hazardLevel: 'general', fixDueDate: pd(12), fixDate: pd(12), fixPhotos: [],
+      record: { findings: '1 条', hazardCount: 1, signedBy: '测试员', signedAt: pd(12) },
+      problems: [{ id: 'm4', dept: '仓储部', content: '按期改完', type: '消防', level: 'general', count: 1,
+        photos: [], fixDueDate: pd(12), fixDate: pd(12), fixPhotos: [] }] },
+    { id: 'MV-P3', code: 'FZXJ-' + Y0 + '-713', planName: '跨月补完', type: '日常巡检', area: 'X 区',
+      dept: '生产一部', executor: '测试员', scheduledDate: pd(22), status: 'done', completedAt: cd(5),
+      photos: [], hazardCount: 2, hazardLevel: 'large', fixDueDate: pd(20), fixDate: cd(5), fixPhotos: [],
+      record: { findings: '2 条', hazardCount: 2, signedBy: '测试员', signedAt: cd(5) },
+      problems: [{ id: 'm5', dept: '生产一部', content: '本月才改完', type: '消防', level: 'large', count: 2,
+        photos: [], fixDueDate: pd(20), fixDate: cd(5), fixPhotos: [] }] },
+    /* 去年同月：必须不出现在当年/当月任何数字里 */
+    { id: 'MV-LY', code: 'FZXJ-' + (Number(Y0) - 1) + '-799', planName: '去年同月', type: '日常巡检', area: 'Y 区',
+      dept: '质检部', executor: '测试员', scheduledDate: lyYM2 + '-01', status: 'done', completedAt: lyYM2 + '-02',
+      photos: shot(3), hazardCount: 9, hazardLevel: 'major', fixDueDate: '', fixDate: '', fixPhotos: [],
+      problems: [{ id: 'm6', dept: '质检部', content: '去年问题', type: '其它', level: 'major', count: 9,
+        photos: shot(3), fixDueDate: '', fixDate: '', fixPhotos: [] }] }
+  ];
+  SD.store.save();
+  await SD.app.reload();
+  await go('dashboard');
+  await wait(500);
+
+  /* 上一节停在「看年度」，这里切回「按月」 */
+  click2(view().querySelector('.js-dash-mode [data-mode="month"]'));
+  await wait(400);
+  const mSel = view().querySelector('.js-m-sel');
+  ok('切回按月后月份条重新出现', !!mSel && !!view().querySelector('.js-dash-month'));
+
+  const mOpts = mSel ? Array.from(mSel.querySelectorAll('option')).map(o => o.value) : [];
+  ok('月份下拉含本月 / 上月 / 去年同月，且倒序',
+    mOpts[0] === curYM2 && mOpts.indexOf(prevYM2) >= 0 && mOpts.indexOf(lyYM2) >= 0, mOpts.join(','));
+  ok('月份下拉不含从未出现的月份',
+    mOpts.length === 3, mOpts.join(','));
+  const curOptTxt = mSel ? mSel.querySelector('option[value="' + curYM2 + '"]').textContent : '';
+  ok('选项文案带本月项数（· 2 项）', /·\s*2\s*项/.test(curOptTxt), curOptTxt);
+
+  /* ---- 18.1 本月：逐日 + 跨月补完 + 环比 ---- */
+  const curSt = SD.metrics.inspectionStats(data(), t0, { ym: curYM2 });
+  ok('本月隐患条数 = 5（2+3，去年 9 条不计）', curSt.hazardCount === 5, curSt.hazardCount);
+  ok('本月逐日长度 = 该月天数',
+    curSt.daily.length === SD.utils.daysInMonth(curYM2), curSt.daily.length);
+  ok('逐日上报落点：3 日 2 条', curSt.daily[2].found === 2, JSON.stringify(curSt.daily[2]));
+  ok('逐日已整改落点：3 日 2 条', curSt.daily[2].fixed === 2, JSON.stringify(curSt.daily[2]));
+  ok('跨月补完：5 日为上月上报的 2 条', curSt.daily[4].fixed === 2, JSON.stringify(curSt.daily[4]));
+  ok('fixedCarryIn = 2（本月改完但上报不在本月）', curSt.fixedCarryIn === 2, curSt.fixedCarryIn);
+  const carryLegend = Array.from(view().querySelectorAll('.card'))
+    .find(c => /巡检隐患条数趋势/.test((c.querySelector('h3') || {}).textContent || ''));
+  ok('趋势图例写明跨月补完来源',
+    !!carryLegend && /来自上月及以前上报/.test(carryLegend.textContent.replace(/\s+/g, ' ')),
+    carryLegend ? carryLegend.querySelector('.js-legend').textContent : '无');
+  const curKpi = Array.from(view().querySelectorAll('.grid.cols-4 > *')).map(c => c.textContent.replace(/\s+/g, ' '));
+  ok('本月卡出现环比行（4 张都有）',
+    view().querySelectorAll('.stat-delta').length === 4, view().querySelectorAll('.stat-delta').length);
+  ok('隐患条数环比：较上月 -29%（上月 7 条）',
+    /较上月\s*-29%（上月 7 条）/.test(curKpi[0]), curKpi[0].slice(0, 70));
+  ok('已整改环比：较上月 -33%（上月 3 条）', /较上月\s*-33%（上月 3 条）/.test(curKpi[1]), curKpi[1].slice(0, 70));
+  ok('逾期环比下降算好事（着 good 绿，按好坏不按数值方向）',
+    /较上月\s*-25%（上月 4 条）/.test(curKpi[2]) &&
+    !!view().querySelectorAll('.grid.cols-4 > *')[2].querySelector('.stat-delta .good'),
+    curKpi[2].slice(0, 80));
+  ok('整改率环比用「个百分点」而非相对变化',
+    /较上月\s*-2\.9 个百分点（上月 43%）/.test(curKpi[3]), curKpi[3].slice(0, 90));
+
+  /* ---- 18.2 切到上月：历史月 + 逾期按今天判 ---- */
+  click2(view().querySelector('.js-m-prev'));
+  await wait(450);
+  const prevSel = view().querySelector('.js-m-sel');
+  ok('「‹ 上一月」切到上月', !!prevSel && prevSel.value === prevYM2, prevSel ? prevSel.value : '无');
+  const prevScope = (view().querySelector('.js-year-scope') || {}).textContent.replace(/\s+/g, ' ');
+  ok('范围条写明所选月份',
+    new RegExp('统计范围：' + prevYM2.slice(0, 4) + ' 年 ' + Number(prevYM2.slice(5)) + ' 月').test(prevScope),
+    prevScope.slice(0, 80));
+  const prevKpi = Array.from(view().querySelectorAll('.grid.cols-4 > *')).map(c => c.textContent.replace(/\s+/g, ' '));
+  ok('上月隐患条数 = 7（4+1+2）', /隐患条数\s*7\s*条/.test(prevKpi[0]), prevKpi[0].slice(0, 40));
+  const prevSt = SD.metrics.inspectionStats(data(), t0, { ym: prevYM2 });
+  ok('历史月逾期按「今天」判：上月那条过期未整改 = 4 条', prevSt.due.openOverdue === 4, prevSt.due.openOverdue);
+  const prevSec = Array.from(view().querySelectorAll('.card'))
+    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '安全巡检（隐患与整改）');
+  ok('月档段副标题标「逾期天数截至今天」',
+    !!prevSec && /截至今天/.test(prevSec.textContent), prevSec ? prevSec.querySelector('.sub').textContent : '无');
+  ok('上月逐日：10 日上报 1 条', prevSt.daily[9].found === 1, JSON.stringify(prevSt.daily[9]));
+  ok('上月逐日：12 日改完 1 条', prevSt.daily[11].fixed === 1, JSON.stringify(prevSt.daily[11]));
+  ok('上月 fixedCarryIn = 0（上月改完的没有跨月上报）', prevSt.fixedCarryIn === 0, prevSt.fixedCarryIn);
+
+  /* ---- 18.3 去年同月：无基数不编百分比 ---- */
+  const lySel = view().querySelector('.js-m-sel');
+  lySel.value = lyYM2;
+  lySel.dispatchEvent(new win.Event('change', { bubbles: true }));
+  await wait(450);
+  const lyKpi = Array.from(view().querySelectorAll('.grid.cols-4 > *')).map(c => c.textContent.replace(/\s+/g, ' '));
+  ok('去年同月能查到（9 条）', /隐患条数\s*9\s*条/.test(lyKpi[0]), lyKpi[0].slice(0, 40));
+  ok('上月为 0 时逾期环比不出百分比',
+    /上月\s*0\s*条/.test(lyKpi[2]) && !/%/.test(lyKpi[2]), lyKpi[2].slice(0, 70));
+  ok('上月无隐患基数时整改率写「无可比基数」',
+    /上月无数据（无可比基数）/.test(lyKpi[3]), lyKpi[3].slice(0, 80));
+
+  /* ---- 18.4 空月份：四处空态 + 脏值回落 ---- */
+  SD.app.state.filters.dashboard.ym = '2020-05';
+  await go('todo');
+  await go('dashboard');
+  await wait(500);
+  const emptyTxt = view().textContent.replace(/\s+/g, ' ');
+  ok('空月份：条数趋势走空态', /暂无趋势数据/.test(emptyTxt));
+  ok('空月份：照片趋势走空态', /暂无隐患照片/.test(emptyTxt));
+  ok('空月份：部门整改率走空态', /暂无部门数据/.test(emptyTxt));
+  ok('空月份：巡检段走空态', /暂无巡检隐患数据/.test(emptyTxt));
+  ok('空月份不画逐日折线（daily 为空）',
+    SD.metrics.inspectionStats(data(), t0, { ym: '2020-05' }).daily.length === 0);
+
+  SD.app.state.filters.dashboard.ym = '2026-13';
+  await go('todo');
+  await go('dashboard');
+  await wait(500);
+  const fixedSel = view().querySelector('.js-m-sel');
+  ok('脏值（13 月）回落到本月', !!fixedSel && fixedSel.value === curYM2, fixedSel ? fixedSel.value : '无');
+
+  /* ---- 18.5 月档六格恒等式 + 切年回落 ---- */
+  ok('月档六格恒等式仍成立',
+    ['doneOnTime', 'doneLate', 'doneNoDue', 'openOverdue', 'openInDue', 'openNoDue']
+      .reduce((a, k) => a + curSt.due[k], 0) === curSt.hazardCount);
+  /* 副标题：单参数（导航摘要 / 老调用）必须仍走年度，第二参才按月 */
+  ok('副标题：单参数走年度、带 state 走月档',
+    /巡检记录\s*5\s*项/.test(SD.views.dashboard.sub(SD.app.state.summary)) &&
+    !/年 \d+ 月/.test(SD.views.dashboard.sub(SD.app.state.summary)) &&
+    /年 \d+ 月 · 巡检记录/.test(SD.views.dashboard.sub(SD.app.state.summary, SD.app.state)),
+    SD.views.dashboard.sub(SD.app.state.summary) + ' | ' + SD.views.dashboard.sub(SD.app.state.summary, SD.app.state));
+
+  click2(view().querySelector('.js-dash-mode [data-mode="year"]'));
+  await wait(450);
+  const backKpi = Array.from(view().querySelectorAll('.grid.cols-4 > *')).map(c => c.textContent.replace(/\s+/g, ' '));
+  ok('切年度：条数回到当年合计（5+7=12，去年 9 条不计）', /隐患条数\s*12\s*条/.test(backKpi[0]), backKpi[0].slice(0, 40));
+  ok('切年度：环比行消失', view().querySelectorAll('.stat-delta').length === 0);
+  ok('切年度：月份条移除、看年度变选中',
+    !view().querySelector('.js-dash-month') &&
+    /看年度/.test((view().querySelector('.js-dash-mode .chip.on') || {}).textContent || ''));
 
   ok('全程无 JS 报错', errors.length === 0, errors.join(' | ').slice(0, 200));
 

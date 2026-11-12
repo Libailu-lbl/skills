@@ -426,8 +426,68 @@ SD.metrics = (function () {
     return out;
   }
 
-  /** 巡检记录归年（按计划日期）；取不到返回 '' */
-  function inspYearOf(t) { return yearOf(t && t.scheduledDate); }
+  /* ---------------- 统计区间：年 / 月（★ 2026-11-12 月视图）----------------
+     为什么要有它：看板原来只有「当年」一档，口径写死在 inspectionStats 内部。
+     用户要求能按月看，于是把「区间」抽出来，两个统计入口都接受一个可选的第三参：
+
+       inspectionStats(data, today)                  → 当年（完全等于旧行为）
+       inspectionStats(data, today, { ym:'2026-11' }) → 该自然月
+
+     ⚠️ 筛与算必须分两层（scopeInspections / statsOf）：月视图若另写一套聚合，
+        六格恒等式、同值契约会立刻分叉 —— 这是本文件最容易出事的地方。
+     ⚠️ 归期依据仍是 scheduledDate（计划日期），不是 completedAt / fixDate：
+        一条上月的巡检本月才做完，它仍是「上月的巡检」。
+     ⚠️ 月视图的**逾期判定基准仍是今天**（rowDueOf 不接 asOf）：
+        看的是「该月上报的隐患到现在还剩多少没改」，不是「该月月底快照」。
+        用月末会把后来事实倒灌进历史（fixDate 只看有没有，不看是哪天）。 */
+  var YM_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+  function rangeOf(today, scope) {
+    today = today || U.today();
+    /* 两种入参都认：`'2026-11'`（视图里顺手传）与 `{ ym:'2026-11' }`（与 inspectionStats 一致）。
+       只认对象的话，视图传字符串时会**静默退回当年** —— 页面显示「2026 年」却挂着月视图的
+       分支，数字看着像对的，其实全是年度值，这种错最难发现。 */
+    var ym = typeof scope === 'string' ? scope : (scope && scope.ym);
+    if (YM_RE.test(String(ym || ''))) {
+      return {
+        kind: 'month', ym: ym, year: ym.slice(0, 4), month: ym.slice(5, 7),
+        label: ym.slice(0, 4) + ' 年 ' + Number(ym.slice(5, 7)) + ' 月',
+        months: [ym], days: U.daysInMonth(ym),
+        start: U.startOfMonth(ym), end: U.endOfMonth(ym),
+        prevYm: U.shiftYM(ym, -1)
+      };
+    }
+    var Y = yearOf(today);                 // 缺省 / 脏值 → 当年
+    return {
+      kind: 'year', year: Y, ym: '', month: '', label: Y + ' 年',
+      months: monthsOfYear(Y), days: 0,
+      start: Y + '-01-01', end: Y + '-12-31', prevYm: ''
+    };
+  }
+
+  /** 值是否落在区间内（按 'YYYY-MM-DD' 的字符串比较即可，格式固定可字典序比） */
+  function inRangeOf(v, R) {
+    if (!v) return false;
+    return R.kind === 'year' ? yearOf(v) === R.year : U.ym(v) === R.ym;
+  }
+
+  /** 唯一筛选入口：两个统计函数都从这里过，漏筛在结构上不可能发生 */
+  function scopeInspections(all, R) {
+    return (all || []).filter(function (t) { return inRangeOf(t && t.scheduledDate, R); });
+  }
+
+  /** 月份候选：数据中出现过的年月 + 当月，倒序。给看板的月份下拉用 */
+  function inspectionMonthsOf(data) {
+    var cnt = {};
+    ((data && data.inspections) || []).forEach(function (t) {
+      var ym = U.ym(t && t.scheduledDate);
+      if (YM_RE.test(ym)) cnt[ym] = (cnt[ym] || 0) + 1;
+    });
+    var cur = U.ym(U.today());
+    if (cnt[cur] == null) cnt[cur] = 0;
+    return Object.keys(cnt).sort(function (a, b) { return a < b ? 1 : -1; })
+      .map(function (ym) { return { ym: ym, records: cnt[ym] }; });
+  }
 
   function photoCountOf(t) {
     return Object.prototype.toString.call(t && t.photos) === '[object Array]' ? t.photos.length : 0;
@@ -581,19 +641,24 @@ SD.metrics = (function () {
     return units;
   }
 
-  function inspectionPhotos(data, today) {
-    today = today || U.today();
-    var Y = yearOf(today);
-    /* ★ 2026-11-12：先按自然年筛掉跨年记录，后面的张数 / 部门 / 类型 / 趋势全都只算当年 */
-    var insp = ((data && data.inspections) || []).filter(function (t) {
-      return inspYearOf(t) === Y;
-    });
+  /** 月视图的「逐日」横轴：['2026-11-01', … , '2026-11-30'] */
+  function daysOfMonth(ym) {
+    var n = U.daysInMonth(ym), out = [];
+    for (var d = 1; d <= n; d++) out.push(ym + '-' + (d < 10 ? '0' + d : String(d)));
+    return out;
+  }
 
-    var months = monthsOfYear(Y);
+  /** 聚合层：只吃「已筛过的记录」，不再碰 all / 年份 */
+  function photosOf(insp, R) {
+    var Y = R.year;
+    var months = R.months;
+    var monthMode = R.kind === 'month';
+    var dayAxis = monthMode ? daysOfMonth(R.ym) : null;
 
     var totalPhotos = 0, totalTasks = 0, totalRecords = 0;
     var byDept = {};
     var trendMap = {};
+    var dayMap = {};
     var byTypeMap = {};
 
     insp.forEach(function (t) {
@@ -605,6 +670,7 @@ SD.metrics = (function () {
       totalRecords += 1;
 
       var ym = t.scheduledDate ? U.ym(t.scheduledDate) : '';
+      var day = t.scheduledDate ? String(t.scheduledDate).slice(0, 10) : '';
       var inWin = !!ym && months.indexOf(ym) >= 0;
 
       units.forEach(function (u) {
@@ -622,6 +688,12 @@ SD.metrics = (function () {
         if (!inWin) return;
         trendMap[u.dept] = trendMap[u.dept] || {};
         trendMap[u.dept][ym] = (trendMap[u.dept][ym] || 0) + u.n;
+
+        /* 月视图的逐日曲线：与按月同一批记录、同一批单元，只是把归期粒度换到「日」 */
+        if (monthMode && day && dayAxis.indexOf(day) >= 0) {
+          dayMap[u.dept] = dayMap[u.dept] || {};
+          dayMap[u.dept][day] = (dayMap[u.dept][day] || 0) + u.n;
+        }
       });
     });
 
@@ -637,6 +709,13 @@ SD.metrics = (function () {
       return { dept: dept, data: series, total: series.reduce(function (a, b) { return a + b; }, 0) };
     }).sort(function (a, b) { return b.total - a.total; });
 
+    /* 逐日（仅月视图）：labels 是完整日期，显示层再截成「27 日」 */
+    var dayDepts = monthMode ? Object.keys(dayMap).map(function (dept) {
+      var m = dayMap[dept];
+      var series = dayAxis.map(function (d) { return m[d] || 0; });
+      return { dept: dept, data: series, total: series.reduce(function (a, b) { return a + b; }, 0) };
+    }).sort(function (a, b) { return b.total - a.total; }) : [];
+
     return {
       totalPhotos: totalPhotos,
       totalTasks: totalTasks,
@@ -647,8 +726,16 @@ SD.metrics = (function () {
       year: Y,
       byDept: list,
       byType: typeList,
-      trend: { months: months, depts: depts }
+      trend: { months: months, depts: depts },
+      /* ★ 2026-11-12 v1.3.9：月视图逐日 {labels, depts}；年视图为空对象 */
+      daily: { labels: dayAxis || [], depts: dayDepts }
     };
+  }
+
+  function inspectionPhotos(data, today, scope) {
+    today = today || U.today();
+    var R = rangeOf(today, scope);
+    return photosOf(scopeInspections((data && data.inspections) || [], R), R);
   }
 
   /* ---------------- 巡检任务 / 隐患条数 / 整改状态（★ 2026-11-11 新增）----------------
@@ -661,6 +748,9 @@ SD.metrics = (function () {
        · **统计范围（★ 2026-11-12 新增）= 当前自然年**：按 scheduledDate（计划日期）归年，
          跨年记录一律不计入（records / byStatus / 条数 / 整改 / 期限 / 趋势全都只算当年）。
          这一条对「巡检页汇总条」同样生效 —— 两页读同一份数据，口径不可能分叉。
+         ★ v1.3.9：传第三参 `{ym:'2026-11'}` 即改为「该自然月」，聚合逻辑完全共用
+           （见 rangeOf / scopeInspections / statsOf），月档额外输出 `daily` 与 `fixedCarryIn`；
+           不传参数的旧调用**逐值不变**，仍按当年算。
        · records      = **当年**巡检记录数（含改期 / 取消，不筛状态）
        · recordsAll   = 全库记录数（全部年份，只作对照，页面可选显示）
        · byStatus     = 四种任务状态各自条数
@@ -692,14 +782,19 @@ SD.metrics = (function () {
      ------------------------------------------------------------------ */
   var LEVEL_ORDER = ['major', 'large', 'general'];
 
-  function inspectionStats(data, today) {
+  function inspectionStats(data, today, scope) {
     today = today || U.today();
-    /* ★ 2026-11-12：看板只统计**当前自然年** —— 先按计划日期筛出当年记录，
-       后面每一行代码（状态数 / 条数 / 六格 / 部门 / 等级 / 趋势）都只跑当年数据。
-       放在函数最前面而不是各段里各筛一次，是为了让「漏筛」在结构上不可能发生。 */
-    var Y = yearOf(today);
+    var R = rangeOf(today, scope);
     var all = (data && data.inspections) || [];
-    var insp = all.filter(function (t) { return inspYearOf(t) === Y; });
+    return statsOf(scopeInspections(all, R), all, R, today);
+  }
+
+  /** 聚合层：只吃「已筛过的记录」（insp），all 只用于 recordsAll / weekRate / 跨月补完 */
+  function statsOf(insp, all, R, today) {
+    var Y = R.year;
+    var monthMode = R.kind === 'month';
+    /* 月视图的逐日横轴：日期串固定 'YYYY-MM-DD'，可直接用 indexOf 命中 */
+    var dayAxis = monthMode ? daysOfMonth(R.ym) : [];
 
     var byStatus = { planned: 0, done: 0, rescheduled: 0, cancelled: 0 };
     var hazardCount = 0, hazardTasks = 0;
@@ -711,13 +806,17 @@ SD.metrics = (function () {
     var due = { doneOnTime: 0, doneLate: 0, doneNoDue: 0, openOverdue: 0, openInDue: 0, openNoDue: 0 };
     var dueMaxDays = 0;
 
-    /* ★ 2026-11-12：巡检隐患条数趋势（**本年度 1–12 月**，两条线：上报 / 已整改）
+    /* ★ 2026-11-12：巡检隐患条数趋势（区间内按月聚合：年=12 个月 / 月=1 个月）
        上报按计划日期归月、已整改按行整改日期归月 —— 与台账 hazardTrend 同一逻辑，
-       所以「某月已整改 > 上报」是正常的（上月发现、本月改完），不是算错。
-       横轴从「滚动近 12 个月」改为「本年度各月」：既然只统计当年，
-       把上一年 12 月画进来就会出现一根永远为 0 的柱子，看着像丢数据。 */
-    var trendMonths = monthsOfYear(Y);
+       所以「某月已整改 > 上报」是正常的（上月发现、本月改完），不是算错。 */
+    var trendMonths = R.months;
     var trendMap = {}, trendSum = 0;
+
+    /* ★ 2026-11-12 v1.3.9：月视图逐日曲线 + 跨月补完
+       上报 found = 本区间内的记录；已整改 fixed = **所有记录中 fixDate 落在本月的行**
+       （event window）。若已整改也按「单据月」筛，「上月发现、本月改完」的在上月
+       （单据不在上月）与本月（单据不在本月）都不出现，等于凭空消失。 */
+    var dayMap = {}, fixedCarryIn = 0, dailySum = 0;
 
     insp.forEach(function (t) {
       if (byStatus[t.status] != null) byStatus[t.status]++;
@@ -739,6 +838,15 @@ SD.metrics = (function () {
           trendMap[ymF] = trendMap[ymF] || { found: 0, fixed: 0 };
           trendMap[ymF].found += n;
           trendSum += n;
+        }
+        /* 月视图逐日：同一批记录，归期粒度换到「日」 */
+        if (monthMode) {
+          var dayF = String(t.scheduledDate).slice(0, 10);
+          if (dayAxis.indexOf(dayF) >= 0) {
+            dayMap[dayF] = dayMap[dayF] || { found: 0, fixed: 0 };
+            dayMap[dayF].found += n;
+            dailySum += n;
+          }
         }
       }
 
@@ -763,6 +871,14 @@ SD.metrics = (function () {
             trendMap[ymD].fixed += r.count;
             trendSum += r.count;
           }
+          if (monthMode) {
+            var dayD = String(r.fixDate).slice(0, 10);
+            if (dayAxis.indexOf(dayD) >= 0) {
+              dayMap[dayD] = dayMap[dayD] || { found: 0, fixed: 0 };
+              dayMap[dayD].fixed += r.count;
+              dailySum += r.count;
+            }
+          }
         }
 
         var dept = r.dept || NO_DEPT;
@@ -779,6 +895,24 @@ SD.metrics = (function () {
       /* 同一张单多个部门：每个部门各 +1 个任务，但同一部门在一张单里只算一次 */
       Object.keys(seenDept).forEach(function (d) { byDeptMap[d].tasks += 1; });
     });
+
+    /* ★ 2026-11-12 v1.3.9：跨月补完（只影响月视图的「已整改」曲线，不影响 KPI）
+       本月记录已在上面算完；这里补「上报不在本月、但 fixDate 落在本月」的行，
+       并把补进来的条数单独记成 fixedCarryIn，图例据此提示来源。 */
+    if (monthMode) {
+      all.forEach(function (t) {
+        if (inRangeOf(t && t.scheduledDate, R)) return;      // 本月记录：上面已计
+        problemRowsOf(t).forEach(function (r) {
+          if (!r.count || !r.fixDate) return;
+          var d = String(r.fixDate).slice(0, 10);
+          if (dayAxis.indexOf(d) < 0) return;
+          dayMap[d] = dayMap[d] || { found: 0, fixed: 0 };
+          dayMap[d].fixed += r.count;
+          fixedCarryIn += r.count;
+          dailySum += r.count;
+        });
+      });
+    }
 
     /* 等级固定顺序（重大→较大→一般→未定级），配色与台账等级图一致；
        只输出有条数的档位，但顺序不变 */
@@ -797,11 +931,19 @@ SD.metrics = (function () {
       return { ym: ym, found: c.found, fixed: c.fixed };
     }) : [];
 
+    /* 月视图逐日：全 0 同样返回空数组，页面走空态（不画一条贴着 0 的平线） */
+    var daily = (monthMode && dailySum) ? dayAxis.map(function (d) {
+      var c = dayMap[d] || { found: 0, fixed: 0 };
+      return { date: d, found: c.found, fixed: c.fixed };
+    }) : [];
+
     return {
-      /* ★ 2026-11-12：records 现在是**当年**记录数；recordsAll 是全库数（对照用） */
+      /* ★ 2026-11-12：records 现在是**区间内**记录数（年档=当年 / 月档=当月）；recordsAll 是全库数 */
       records: insp.length,
       recordsAll: all.length,
       year: Y,
+      /* ★ 2026-11-12 v1.3.9：当前区间描述，视图据此写标题与口径，不再自己推年份 */
+      range: { kind: R.kind, ym: R.ym, label: R.label, start: R.start, end: R.end, days: R.days },
       byStatus: byStatus,
       /* 本周完成率传**全库**记录：它是一个「周」指标，跨年那一周（12-29~01-04）
          本来就该把上一年那几天算进去，套上自然年过滤反而与巡检页顶部的完成率不一致 */
@@ -817,7 +959,10 @@ SD.metrics = (function () {
       due: due,                          // 六格，见 rowDueOf
       dueMaxDays: dueMaxDays,            // 最长逾期 / 最长超期天数
       noDue: { count: due.doneNoDue + due.openNoDue },   // 未设期限的条数（不参与逾期判定）
-      trend: trend                       // [{ym, found, fixed}]，全 0 → []
+      trend: trend,                      // [{ym, found, fixed}]，全 0 → []
+      /* ★ 2026-11-12 v1.3.9：月视图逐日曲线（年档为空数组）+ 跨月补完条数 */
+      daily: daily,                      // [{date, found, fixed}]，全 0 → []
+      fixedCarryIn: fixedCarryIn         // 本月改完但上报不在本月的条数（只在月档可能 > 0）
     };
   }
 
@@ -1030,6 +1175,10 @@ SD.metrics = (function () {
     deptTrend: deptTrend,
     inspectionPhotos: inspectionPhotos,
     inspectionStats: inspectionStats,
+    /* ★ 2026-11-12 v1.3.9 看板月视图：区间描述 + 月份候选。
+       视图只从这里取，不要在页面里自己拼 'YYYY-MM' 或算月末。 */
+    inspectionRange: rangeOf,
+    inspectionMonthsOf: inspectionMonthsOf,
     hazardTrend: hazardTrend,
     hazardCountOf: hazardCountOf,
     /* ★ 2026-11-12 分部门明细：视图侧唯一取数口。任何地方都不要再直接读 t.problems */
