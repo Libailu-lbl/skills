@@ -268,9 +268,18 @@ SD.api = (function () {
       if (!hit) throw new Error('巡检任务不存在：' + id);
       hit.status = 'done';
       hit.completedAt = U.today();
-      hit.hazardCount = payload.hazardCount || 0;
+      /* ★ 2026-11-11：隐患条数的**顶层字段是唯一口径**。
+         payload 没带条数时不能无脑写 0（重复点「标记完成」会把已填的条数抹掉），
+         先退回原值，再退回 record 里的历史镜像。 */
+      hit.hazardCount = (payload.hazardCount == null || payload.hazardCount === '')
+        ? SD.metrics.hazardCountOf(hit)
+        : Math.max(0, Number(payload.hazardCount) || 0);
+      /* 隐患等级同样：没传就保留原值，别把填过的等级清掉 */
+      if (payload.hazardLevel != null) hit.hazardLevel = payload.hazardLevel || '';
       hit.record = {
         findings: payload.findings || '现场正常，无异常项',
+        /* record 里留一份镜像（兼容老读取方），口径仍以顶层为准 */
+        hazardCount: hit.hazardCount,
         signedBy: payload.signedBy || hit.executor,
         signedAt: U.today() + ' ' + new Date().toTimeString().slice(0, 5)
       };

@@ -91,9 +91,11 @@ SD.comp.chart = (function () {
    *   items [{name, value, color}]
    *   size  直径（默认 190）
    *   center {top:'总数', bottom:'12'}
+   *   unit  悬停提示的单位（默认 ' 条'；照片传 ' 张'、次数传 ' 次'）
    */
   function donut(o) {
     o = o || {};
+    var unit = o.unit || ' 条';
     var items = (o.items || []).filter(function (i) { return i.value > 0; });
     var size = o.size || 190;
     var total = items.reduce(function (a, b) { return a + b.value; }, 0);
@@ -117,7 +119,7 @@ SD.comp.chart = (function () {
       g += '<circle cx="' + CX + '" cy="' + CY + '" r="' + R + '" fill="none" stroke="' + it.color +
            '" stroke-width="' + SW + '" stroke-dasharray="' + dash +
            '" transform="rotate(' + rot.toFixed(2) + ' ' + CX + ' ' + CY + ')">' +
-           '<title>' + U.esc(it.name) + '：' + it.value + ' 条（' + (frac * 100).toFixed(1) + '%）</title></circle>';
+           '<title>' + U.esc(it.name) + '：' + it.value + unit + '（' + (frac * 100).toFixed(1) + '%）</title></circle>';
       acc += frac;
     });
 

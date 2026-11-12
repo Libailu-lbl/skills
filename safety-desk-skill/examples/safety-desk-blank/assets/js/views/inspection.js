@@ -47,11 +47,31 @@ SD.views.inspection = (function () {
     /* 隐患类型 ★ 2026-11-10 新增：给「这次巡检发现的隐患」归类。
        用途只有一处 —— 数据看板「隐患类型分布」按它出图（按有照片的巡检任务数统计）。
        非必填：正常无异常的巡检不该被逼着编一个类型；没填的归「未分类」，
-       仍然计入（因为照片已经在），保证类型分布合计 = 有隐患照片的任务数。 */
+       仍然计入（因为照片已经在），保证类型分布合计 = 有隐患照片的任务数。
+       ★ 2026-11-11 修：options 前置一个空值项。formDialog 的 select 在「值不匹配任何
+         option」时，浏览器会默认选中第一项 → 老记录（没填类型）一打开编辑就显示「消防」，
+         点保存还真的写回去，类型分布就被污染了。加空项即可从根上避免。 */
     {
       name: 'hazardType', label: '隐患类型', type: 'select',
-      options: function () { return SD.dict.DICT.hazardType; },
+      options: function () { return [{ v: '', n: '未分类' }].concat(SD.dict.DICT.hazardType); },
       help: '本次巡检发现的隐患属于哪一类；没发现隐患可留空。选了才会进数据看板「隐患类型分布」'
+    },
+    /* 隐患条数 ★ 2026-11-11 新增：**看板「隐患条数」的唯一口径**。
+       以前这个数字只能从「标记完成」弹窗填，且编辑表单压根不提交它 —— 同一个数
+       存在顶层与 record 两个位置，看板两个都不读，于是「巡检有隐患、看板看不见」。
+       现在：表单与标记完成两个入口都能填，写入时顶层为准并同步 record 镜像。 */
+    {
+      name: 'hazardCount', label: '隐患条数', type: 'number', min: 0, step: 1, def: 0,
+      help: '本次巡检发现几处隐患，按「条」计（与照片张数无关）。这是数据看板「隐患条数」' +
+            '的唯一来源；填了条数却没拍照片，也照样计数'
+    },
+    /* 隐患等级 ★ 2026-11-11 新增：与隐患台账同一套管理三级（重大 / 较大 / 一般）。
+       非必填 —— 没发现隐患的巡检不该被迫定级；没选的归「未定级」。
+       ★ options 必须带空值项，否则未填会被浏览器回填成第一项「重大」。 */
+    {
+      name: 'hazardLevel', label: '隐患等级', type: 'select', def: '',
+      options: function () { return [{ v: '', n: '未定级' }].concat(SD.dict.DICT.severity); },
+      help: '一条任务只填一个等级；不选则整条计入「未定级」，看板等级分布里显示为灰色'
     },
     /* 隐患照片 ★ 2026-11-10 更名：原「巡查照片」→「隐患照片」。
        更名的原因：巡检拍下来的照片本质就是隐患现场证据，数据看板要按部门
@@ -68,7 +88,7 @@ SD.views.inspection = (function () {
     {
       name: 'photos', label: '隐患照片', type: 'photos', full: true, max: 18,
       help: '最多 18 张，可一次性多选；原图保存（大图自动外置，不压缩）。' +
-            '张数会计入数据看板「各部门隐患照片」统计；与「发现隐患数」不是同一口径（那个记条数）'
+            '张数会计入数据看板「各部门隐患照片」统计；与「隐患条数」不是同一口径（那个记条数）'
     },
     /* 整改日期 ★ 2026-11-11 新增（用户要求）：
        隐患整改**完成**的日期。与「计划日期」不是一回事 —— 计划日期是打算哪天巡检，
@@ -104,21 +124,35 @@ SD.views.inspection = (function () {
   /* ---------------- 新增 / 编辑巡检任务 ---------------- */
   function openForm(ctx, t) {
     var isEdit = !!t;
+    var hzN = isEdit ? SD.metrics.hazardCountOf(t) : 0;
     SD.comp.formDialog.open({
       title: isEdit ? '编辑巡检任务' : '新增巡检任务',
       width: 620,
       fields: resolveFields(t),
-      values: t || {},
+      /* ★ 2026-11-11：老记录的条数可能只存在 record.hazardCount 里，
+         这里必须把读出来的值注入表单 —— 否则输入框显示 0，用户只改个备注点保存，
+         顶层 hazardCount 就被写成 0，历史条数被抹掉（数据损坏级）。 */
+      values: isEdit ? Object.assign({}, t, { hazardCount: hzN }) : {},
       hint: isEdit ? '' : '新增后自动计入本周完成率分母',
       okText: isEdit ? '保存' : '新增',
+      /* 表单级校验：条数必须是整数（半条隐患没有意义，也会把统计带小数） */
+      validate: function (v) {
+        if (v.hazardCount != null && v.hazardCount !== '' && Number(v.hazardCount) !== Math.floor(Number(v.hazardCount))) {
+          return '「隐患条数」请填整数';
+        }
+      },
       onSubmit: function (v) {
         var status = v.status || 'planned';
+        var hz = Number(v.hazardCount) || 0;
         var payload = {
           code: v.code,
           planName: v.planName, type: v.type, area: v.area,
           dept: v.dept || '', executor: v.executor,
           scheduledDate: v.scheduledDate, remark: v.remark || '',
           hazardType: v.hazardType || '',
+          /* ★ 2026-11-11 新增：隐患条数 / 隐患等级（看板口径的两个来源） */
+          hazardCount: hz,
+          hazardLevel: v.hazardLevel || '',
           /* ★ 2026-11-11 新增：整改照片 / 整改日期（与隐患照片 photos 分开存） */
           fixDate: v.fixDate || '',
           fixPhotos: v.fixPhotos || [],
@@ -133,9 +167,12 @@ SD.views.inspection = (function () {
           payload.completedAt = (isEdit && t.completedAt) || SD.utils.today();
           if (!(isEdit && t.record)) {
             payload.record = {
-              findings: '现场正常，无异常项', hazardCount: (isEdit && t.hazardCount) || 0,
+              findings: '现场正常，无异常项', hazardCount: hz,
               signedBy: payload.executor, signedAt: payload.completedAt
             };
+          } else {
+            /* 已有执行记录时也不能让 record 里的镜像停在旧值（否则两处数字漂移） */
+            payload.record = Object.assign({}, t.record, { hazardCount: hz });
           }
         } else {
           payload.completedAt = null;
@@ -145,7 +182,7 @@ SD.views.inspection = (function () {
         var req = isEdit
           ? SD.api.updateInspection(t.id, payload)
           : SD.api.createInspection(Object.assign({
-              hazardCount: 0, completedAt: null, rescheduleTo: null, reason: '',
+              completedAt: null, rescheduleTo: null, reason: '',
               fixDate: '', fixPhotos: []
             }, payload));
         return req.then(function () {
@@ -173,13 +210,24 @@ SD.views.inspection = (function () {
 
   /* ---------------- 完成巡检 ---------------- */
   function openComplete(ctx, t) {
+    /* ★ 2026-11-11：这里是**主路径**（列表「操作 ▾ → 标记完成」），
+       隐患条数与等级必须都能在这里填 —— 只放在编辑表单里的话，
+       实际使用中等级会长期是「未定级」，看板那张等级图等于白做。
+       条数初值取已有值（原来写死 0，重复标记完成会把填过的条数冲掉）。 */
+    var lvOpts = [{ v: '', n: '未定级' }].concat(SD.dict.DICT.severity).map(function (o) {
+      return '<option value="' + U.esc(o.v) + '"' + (String(o.v) === String(t.hazardLevel || '') ? ' selected' : '') + '>' +
+        U.esc(o.n) + '</option>';
+    }).join('');
+
     var body =
       '<p class="t-2 t-sm" style="margin-bottom:12px">' + U.esc(t.planName) + ' · ' + U.esc(t.area) +
       ' · 计划 ' + U.esc(t.scheduledDate) + '</p>' +
       '<div class="grid-form">' +
         '<label class="field full"><span>现场情况 / 发现</span>' +
           '<textarea class="input" id="i_findings" rows="3" placeholder="例：消防通道畅通，灭火器材完好；发现 1 处通道被占用，已登记隐患">现场正常，无异常项</textarea></label>' +
-        '<label class="field"><span>发现隐患数</span><input class="input" type="number" id="i_hz" min="0" value="0"></label>' +
+        '<label class="field"><span>隐患条数</span><input class="input" type="number" id="i_hz" min="0" step="1" value="' +
+          SD.metrics.hazardCountOf(t) + '"></label>' +
+        '<label class="field"><span>隐患等级</span><select class="input" id="i_hzlv">' + lvOpts + '</select></label>' +
         '<label class="field"><span>现场签字人</span><input class="input" id="i_by" value="' + U.esc(t.executor || '') + '"></label>' +
       '</div>';
 
@@ -188,10 +236,11 @@ SD.views.inspection = (function () {
       onOk: function (modal) {
         var g = function (id) { var e = modal.querySelector('#' + id); return e ? e.value.trim() : ''; };
         var n = parseInt(g('i_hz'), 10);
-        if (isNaN(n) || n < 0) return '发现隐患数请填非负整数';
+        if (isNaN(n) || n < 0) return '隐患条数请填非负整数';
         return SD.api.completeInspection(t.id, {
           findings: g('i_findings') || '现场正常，无异常项',
           hazardCount: n,
+          hazardLevel: g('i_hzlv'),
           signedBy: g('i_by')
         }).then(function () {
           U.toast('巡检已完成，记录已保存', 'ok');
@@ -238,7 +287,9 @@ SD.views.inspection = (function () {
         '<label class="field"><span>执行人</span><div>' + U.esc(t.executor) + '</div></label>' +
         '<label class="field"><span>完成日期</span><div>' + U.esc(t.completedAt || '—') + '</div></label>' +
         '<label class="field full"><span>现场情况 / 发现</span><div>' + U.esc(r.findings || '—') + '</div></label>' +
-        '<label class="field"><span>发现隐患数</span><div>' + (t.hazardCount || 0) + ' 条</div></label>' +
+        '<label class="field"><span>隐患条数</span><div>' + SD.metrics.hazardCountOf(t) + ' 条</div></label>' +
+        '<label class="field"><span>隐患等级</span><div>' +
+          U.esc(t.hazardLevel ? SD.dict.nameOf(SD.dict.DICT.severity, t.hazardLevel) : '未定级') + '</div></label>' +
         '<label class="field"><span>现场签字</span><div>' + U.esc(r.signedBy || '—') + '　' + U.esc(r.signedAt || '') + '</div></label>' +
         '<label class="field full"><span>隐患照片</span><div>' +
           (t.photos && t.photos.length
@@ -350,6 +401,27 @@ SD.views.inspection = (function () {
       { label: '取消', value: w.cancelled, unit: '项', icon: 'x', tone: '', foot: '不计入分母' }
     ]);
     host.appendChild(rateBox);
+
+    /* ---------- 巡检口径汇总条（★ 2026-11-11 新增） ----------
+       与数据看板「安全巡检（隐患与整改）」段**读同一份** summary.inspectionStats，
+       所以两页的「巡检记录 / 隐患条数 / 整改状态」数值必然相等 —— 用户要求的口径统一就落在这里。
+       刻意不用指标卡（.stat）：上面四张是「本周」口径，这条是「全部记录」口径，
+       混在卡片里会让人以为同一周期。文字里写明「不限本周 / 年份」。 */
+    var st = s.inspectionStats || {
+      records: 0, hazardCount: 0, fix: { none: 0, doing: 0, done: 0 }, fixRate: null
+    };
+    var sumBar = U.h(
+      '<div class="t-3 t-sm js-insp-sum" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px">' +
+        '<span>全部记录（不限本周 / 年份）<b class="t-2">' + st.records + '</b> 项 · ' +
+        '发现隐患 <b class="t-2">' + st.hazardCount + '</b> 条 · ' +
+        '未整改 ' + st.fix.none + ' · 整改中 ' + st.fix.doing + ' · 已整改 ' + st.fix.done +
+        '（整改率 ' + (st.fixRate == null ? '—' : U.pct(st.fixRate, 1, 0)) + '）</span>' +
+        '<span style="flex:1 1 auto"></span>' +
+        '<button class="btn sm ghost js-go-dash" type="button" title="看板里的「安全巡检」段与本条同源同值">去数据看板</button>' +
+      '</div>'
+    );
+    sumBar.querySelector('.js-go-dash').addEventListener('click', function () { SD.router.go('dashboard'); });
+    host.appendChild(sumBar);
 
     /* ---------- 筛选 ---------- */
     var bar = U.h('<div class="filters"><div class="chip-group"></div><div class="spacer"></div></div>');

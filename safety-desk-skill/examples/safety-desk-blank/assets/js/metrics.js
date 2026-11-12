@@ -328,6 +328,47 @@ SD.metrics = (function () {
     return { months: months, depts: depts };
   }
 
+  /* ---------------- 全厂隐患趋势（★ 2026-11-11 补现算兜底）----------------
+     以前看板「隐患趋势」直接吃 `data.trend`（后端 / 示例预聚合），
+     可空白版没有任何东西会写这个集合 → 这张图**永远是空态**，看着像功能坏了。
+     现在补一层现算：没有预聚合就按 hazards 自己算，与 deptTrend 同一口径。
+
+     口径（必须与 deptTrend 对齐，否则「全厂」与「部门」两张图相加对不上）：
+       · created = 当月 foundDate 的隐患数（**不排除作废**，与 deptTrend 一致）
+       · closed  = 当月 closedAt 且 status==='closed' 的隐患数
+       · 窗口固定近 12 个月（含本月）
+       · **全 0 时返回 []**：让调用方继续渲染「暂无趋势数据」空态，
+         不要把一条全 0 的折线画出来唬人。 */
+  function hazardTrend(data, today) {
+    today = today || U.today();
+    var months = [];
+    var thisYM = U.ym(today);
+    for (var i = 11; i >= 0; i--) months.push(U.shiftYM(thisYM, -i));
+
+    var rows = data && data.trend;
+    if (rows && rows.length) return rows;      // 预聚合优先（兼容旧备份）
+
+    var createdMap = {}, closedMap = {};
+    ((data && data.hazards) || []).forEach(function (h) {
+      if (h.foundDate) {
+        var ym1 = U.ym(h.foundDate);
+        if (months.indexOf(ym1) >= 0) createdMap[ym1] = (createdMap[ym1] || 0) + 1;
+      }
+      if (h.status === 'closed' && h.closedAt) {
+        var ym2 = U.ym(h.closedAt);
+        if (months.indexOf(ym2) >= 0) closedMap[ym2] = (closedMap[ym2] || 0) + 1;
+      }
+    });
+
+    var sum = 0;
+    var out = months.map(function (ym) {
+      var c = createdMap[ym] || 0, k = closedMap[ym] || 0;
+      sum += c + k;
+      return { ym: ym, created: c, closed: k };
+    });
+    return sum ? out : [];                     // 全 0 → 空态（护栏，别画空折线）
+  }
+
   /* ---------------- 巡检隐患照片（看板计数口径）----------------
      ★ 2026-11-10：巡检表单里「巡查照片」统一更名为「隐患照片」——
        它承载的就是巡检过程中发现的隐患现场证据。看板的「隐患计数」因此改为
@@ -355,9 +396,32 @@ SD.metrics = (function () {
      } */
   var NO_DEPT = '未指定部门';
   var NO_TYPE = '未分类';
+  var NO_LEVEL = '未定级';
 
   function photoCountOf(t) {
     return Object.prototype.toString.call(t && t.photos) === '[object Array]' ? t.photos.length : 0;
+  }
+
+  /* ---------------- 巡检隐患条数（★ 2026-11-11 统一口径）----------------
+     同一个业务数字在历史上有两个落点，这是「巡检页与看板对不上」的根因：
+       · 「标记完成」弹窗 → 写**顶层** hazardCount（dataSource.completeInspection）
+       · 编辑表单选「已完成」→ 只写 record.hazardCount（inspection.js）
+     统一规则：**顶层为准**，record 里的只作老数据兼容兜底。
+     写入侧从 v1.3.5 起两边同步（见 inspection.js / dataSource.js），
+     读取一律走本函数，任何地方都不要再直接读 t.hazardCount。 */
+  function hazardCountOf(t) {
+    if (!t) return 0;
+    if (t.hazardCount != null && t.hazardCount !== '') return Math.max(0, Number(t.hazardCount) || 0);
+    var r = t.record && t.record.hazardCount;
+    return Math.max(0, Number(r) || 0);
+  }
+
+  /** 整改状态：纯派生，不存字段（有整改日期=已整改；只有整改照片=整改中；都没有=未整改） */
+  function fixStatusOf(t) {
+    if (!t) return 'none';
+    if (t.fixDate) return 'done';
+    if (Object.prototype.toString.call(t.fixPhotos) === '[object Array]' && t.fixPhotos.length) return 'doing';
+    return 'none';
   }
 
   function inspectionPhotos(data, today) {
@@ -416,6 +480,96 @@ SD.metrics = (function () {
       byType: typeList,
       trend: { months: months, depts: depts }
     };
+  }
+
+  /* ---------------- 巡检任务 / 隐患条数 / 整改状态（★ 2026-11-11 新增）----------------
+     ★ 为什么要有它：用户要求「巡检与看板统一数据来源与统计口径」。
+       以前巡检页自己算完成率、看板自己算照片张数与类型次数，
+       同一个月在两页看到的数字不是一回事。现在**巡检侧所有数字只从这里出**：
+       巡检页顶部汇总条、看板「安全巡检」段都读 inspectionStats，数值必然一致。
+
+     口径（与本文件外的口径说明段必须同步）：
+       · records      = 全部巡检记录数（含改期 / 取消，不筛状态）
+       · byStatus     = 四种任务状态各自条数
+       · weekRate     = 复用 weekInspectionRate（本周已完成 / 本周计划，排除取消，改期不减免）
+       · hazardCount  = Σ hazardCountOf(t)  ← **隐患条数的唯一口径**（人工填报，不是照片张数）
+       · hazardTasks  = 条数 > 0 的任务数（"这 N 条来自几个巡检任务"）
+       · fix          = 整改三态，**按条数累计**（不是任务数）：
+                        fixDate 有 → done 已整改；fixDate 空但 fixPhotos 有 → doing 整改中；否则 none
+       · fixRate      = done / hazardCount（0 条时为 null，页面显示「—」）
+                        —— 用条数做分母，才能和上面几个数字同量纲，不会出现
+                           「隐患 5 条、已整改 4 条、整改率 50%」这种自相矛盾
+       · byLevel      = 按 hazardLevel 分组，value = 该组 Σ hazardCount（空 → 未定级）
+                        一条任务只填一个等级，其全部条数计入该等级 → Σ byLevel === hazardCount
+       · byDept       = 按 dept 分组（空 → 未指定部门），给条数与任务数 → Σ === hazardCount
+       · **不按任务状态过滤**：照片/条数都是既成事实，任务改期或取消也照算
+         （与 inspectionPhotos 同一态度，否则列表里有、看板没有，属对不上账）。
+       · 无隐患任务（条数=0）不进隐患 / 整改口径，避免"没发现问题"被算成"未整改"。
+     ------------------------------------------------------------------ */
+  var LEVEL_ORDER = ['major', 'large', 'general'];
+
+  function inspectionStats(data, today) {
+    today = today || U.today();
+    var insp = (data && data.inspections) || [];
+
+    var byStatus = { planned: 0, done: 0, rescheduled: 0, cancelled: 0 };
+    var hazardCount = 0, hazardTasks = 0;
+    var fix = { none: 0, doing: 0, done: 0 };
+    var fixTasks = { none: 0, doing: 0, done: 0 };
+    var byLevelMap = {}, byDeptMap = {};
+
+    insp.forEach(function (t) {
+      if (byStatus[t.status] != null) byStatus[t.status]++;
+
+      var n = hazardCountOf(t);
+      if (!n) return;                       // 无隐患任务：不进隐患 / 整改口径
+
+      hazardCount += n;
+      hazardTasks += 1;
+
+      var fs = fixStatusOf(t);
+      fix[fs] += n;
+      fixTasks[fs] += 1;
+
+      var lv = t.hazardLevel || '';
+      byLevelMap[lv] = (byLevelMap[lv] || 0) + n;
+
+      var dept = t.dept || NO_DEPT;
+      byDeptMap[dept] = byDeptMap[dept] || { dept: dept, hazardCount: 0, tasks: 0 };
+      byDeptMap[dept].hazardCount += n;
+      byDeptMap[dept].tasks += 1;
+    });
+
+    /* 等级固定顺序（重大→较大→一般→未定级），配色与台账等级图一致；
+       只输出有条数的档位，但顺序不变 */
+    var byLevel = LEVEL_ORDER.concat(['']).filter(function (k) {
+      return byLevelMap[k] != null;
+    }).map(function (k) {
+      return { level: k || '', name: k ? levelName(k) : NO_LEVEL, count: byLevelMap[k] };
+    });
+
+    var byDept = Object.keys(byDeptMap).map(function (k) { return byDeptMap[k]; })
+      .sort(function (a, b) { return b.hazardCount - a.hazardCount || b.tasks - a.tasks; });
+
+    return {
+      records: insp.length,
+      byStatus: byStatus,
+      weekRate: weekInspectionRate(insp, today),
+      hazardCount: hazardCount,
+      hazardTasks: hazardTasks,
+      byLevel: byLevel,
+      byDept: byDept,
+      fix: fix,
+      fixTasks: fixTasks,
+      fixRate: hazardCount ? fix.done / hazardCount : null
+    };
+  }
+
+  /** 等级 key → 中文（取字典，取不到给 key 本身，避免出现空白） */
+  function levelName(k) {
+    var dict = (window.SD && SD.dict && SD.dict.DICT && SD.dict.DICT.severity) || [];
+    for (var i = 0; i < dict.length; i++) if (dict[i].v === k) return dict[i].n;
+    return k;
   }
 
   /* ---------------- 看板聚合 ---------------- */
@@ -564,8 +718,11 @@ SD.metrics = (function () {
       deptTrend: deptTrend(data, today),
       /* ★ 2026-11-10：看板隐患计数的新口径 —— 巡检任务上传的隐患照片，按部门汇总 */
       inspectionPhotos: inspectionPhotos(data, today),
+      /* ★ 2026-11-11：巡检侧统一口径（记录 / 隐患条数 / 整改三态）。
+         巡检页与看板都只读这一份，保证两页数字一致。 */
+      inspectionStats: inspectionStats(data, today),
       typeDist: typeDist(live),
-      trend: data.trend || [],
+      trend: hazardTrend(data, today),
 
       /* 特种作业：派生 + 聚合 */
       specialPersonnel: (data.specialPersonnel || []).map(function (p) { return enrichSpecialPerson(p, today); }),
@@ -616,7 +773,12 @@ SD.metrics = (function () {
     deptRates: deptRates,
     deptTrend: deptTrend,
     inspectionPhotos: inspectionPhotos,
+    inspectionStats: inspectionStats,
+    hazardTrend: hazardTrend,
+    hazardCountOf: hazardCountOf,
+    fixStatusOf: fixStatusOf,
     NO_DEPT: NO_DEPT,
+    NO_LEVEL: NO_LEVEL,
     typeDist: typeDist,
     severityDist: severityDist,
     summarize: summarize

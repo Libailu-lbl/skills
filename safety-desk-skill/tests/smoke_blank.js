@@ -141,6 +141,28 @@ function ok(name, cond, extra) {
   ok('看板 KPI 首卡改为「隐患照片」',
     /隐患照片/.test((view().querySelector('.grid.cols-4 > *') || {}).textContent || ''));
   ok('看板「暂无部门数据」空态', view().textContent.indexOf('暂无部门数据') >= 0);
+  /* ★ 2026-11-11：看板新增「安全巡检（隐患与整改）」段（巡检口径：记录 / 条数 / 整改状态），
+     与巡检页汇总条同源；空数据时这段也要给出自己的空态。 */
+  const blankInspSec = Array.from(view().querySelectorAll('.card'))
+    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '安全巡检（隐患与整改）');
+  ok('看板新增「安全巡检（隐患与整改）」段', !!blankInspSec);
+  ok('新段空态给「暂无巡检隐患数据」',
+    !!blankInspSec && /暂无巡检隐患数据/.test(blankInspSec.textContent),
+    blankInspSec ? blankInspSec.textContent.replace(/\s+/g, ' ').slice(0, 60) : '无');
+  ok('新段 4 格初值全为 0 / —',
+    !!blankInspSec && /巡检记录\s*0\s*项/.test(blankInspSec.textContent.replace(/\s+/g, ' ')) &&
+    /整改率\s*—/.test(blankInspSec.textContent.replace(/\s+/g, ' ')),
+    blankInspSec ? blankInspSec.textContent.replace(/\s+/g, ' ').slice(0, 100) : '无');
+  ok('新段没有挤掉顶部 KPI（cols-4 仍 4 张）',
+    view().querySelectorAll('.grid.cols-4 > *').length === 4,
+    view().querySelectorAll('.grid.cols-4 > *').length);
+  await go('inspection');
+  ok('巡检页空态仍指向「新增第一条巡检」', view().textContent.indexOf('新增第一条巡检') >= 0);
+  ok('巡检页有口径汇总条且空值为 0 项 / 0 条',
+    !!view().querySelector('.js-insp-sum') &&
+    /0\s*项/.test(view().querySelector('.js-insp-sum').textContent.replace(/\s+/g, ' ')) &&
+    /发现隐患\s*0\s*条/.test(view().querySelector('.js-insp-sum').textContent.replace(/\s+/g, ' ')),
+    (view().querySelector('.js-insp-sum') || {}).textContent);
   await go('notice');
   ok('通知页说明卡指向侧栏快捷入口',
     view().textContent.indexOf('已移至左侧导航下方') >= 0);

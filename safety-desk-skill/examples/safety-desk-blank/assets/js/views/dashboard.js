@@ -28,7 +28,9 @@ SD.views.dashboard = (function () {
   function sub(s) {
     if (!s) return '';
     var ip = s.inspectionPhotos || { totalPhotos: 0, byDept: [] };
-    return '巡检隐患照片 ' + ip.totalPhotos + ' 张（覆盖 ' + ip.byDept.length + ' 个部门）· 隐患台账 ' + s.totalHazards + ' 条';
+    var st = s.inspectionStats || { hazardCount: 0 };
+    return '巡检隐患照片 ' + ip.totalPhotos + ' 张（覆盖 ' + ip.byDept.length + ' 个部门）· ' +
+      '巡检隐患 ' + st.hazardCount + ' 条 · 隐患台账 ' + s.totalHazards + ' 条';
   }
 
   function render(host, ctx) {
@@ -52,6 +54,79 @@ SD.views.dashboard = (function () {
         foot: '已批准延期，单列盯办' }
     ]);
     host.appendChild(kpi);
+
+    /* ---------- 安全巡检（隐患与整改）★ 2026-11-11 新增 ----------
+       用户要求「巡检与看板统一口径」：巡检记录数、隐患条数、整改状态必须在看板上
+       看得见，且与巡检页数字一致。所以这一段**只读 s.inspectionStats**（巡检侧唯一
+       统计入口），巡检页顶部汇总条读的是同一份 —— 数值一致是结构保证，不是人工对账。
+
+       ★ 三条硬约束（改了会打挂冒烟测试）：
+         ① 本段**不能用 .grid.cols-4**：测试按 `.grid.cols-4 > *` 断言顶部 KPI 正好 4 张，
+            querySelectorAll 是全文档递归，多一个 cols-4 就变成 8。
+         ② 不能插在 KPI 行之前：空态断言取 `.grid.cols-4 > *` 的第一个做「首卡是隐患照片」。
+         ③ 空态文案不能复用「暂无隐患照片」（那是照片口径的），这里用「暂无巡检隐患数据」。 */
+    var st = s.inspectionStats || {
+      records: 0, byStatus: { cancelled: 0 }, hazardCount: 0, hazardTasks: 0,
+      byLevel: [], fix: { none: 0, doing: 0, done: 0 }, fixRate: null
+    };
+    var cand = (st.byStatus && st.byStatus.cancelled) || 0;
+    var inspCard = U.h(
+      '<section class="card">' +
+        '<div class="card-head"><div><h3>安全巡检（隐患与整改）</h3>' +
+          '<div class="sub">基于巡检记录的<b>人工填报</b>：隐患计<b>条数</b>，' +
+          '与上方「隐患照片（张）」、下方「隐患台账（条）」都不是同一口径，互不折算</div></div></div>' +
+        '<div class="grid cols-2">' +
+          '<div><div class="rpt-kv js-insp-kv"></div><div class="t-3 t-sm js-insp-fix"></div></div>' +
+          '<div class="js-insp-level"></div>' +
+        '</div>' +
+      '</section>'
+    );
+
+    var kvBox = inspCard.querySelector('.js-insp-kv');
+    [
+      { k: '巡检记录', v: st.records + ' 项', note: '含已取消 ' + cand + ' 项 · 不限本周' },
+      { k: '隐患条数', v: st.hazardCount + ' 条', note: st.hazardTasks ? st.hazardTasks + ' 项任务上报' : '暂无上报' },
+      { k: '已整改', v: st.fix.done + ' 条', note: st.hazardCount ? '占 ' + U.pct(st.fix.done / st.hazardCount, 1, 0) : '—' },
+      { k: '整改率', v: st.fixRate == null ? '—' : U.pct(st.fixRate, 1, 0), note: '已整改 / 隐患总条数' }
+    ].forEach(function (x) {
+      kvBox.appendChild(U.h('<div class="kv"><span class="kv-k">' + U.esc(x.k) + '</span>' +
+        '<span class="kv-v">' + U.esc(x.v) + '</span>' +
+        '<span class="kv-note">' + U.esc(x.note) + '</span></div>'));
+    });
+
+    /* 整改三态（按条数）：一眼看出「发现的问题改完了没有」 */
+    var fixBox = inspCard.querySelector('.js-insp-fix');
+    if (!st.hazardCount) {
+      fixBox.textContent = '巡检里还没填过隐患条数 —— 在「安全巡检」的编辑表单或「标记完成」里填「隐患条数」后，这里会同步显示。';
+    } else {
+      fixBox.innerHTML = '未整改 <b class="t-2">' + st.fix.none + '</b> 条 · 整改中 <b class="t-2">' + st.fix.doing +
+        '</b> 条 · 已整改 <b class="t-2">' + st.fix.done + '</b> 条（共 ' + st.hazardCount + ' 条）';
+    }
+
+    /* 巡检隐患等级（按条数）——与下方「隐患等级分布（台账）」并列但不同源，
+       标题写清「按条数」，避免被当成同一张图。 */
+    var lvBox = inspCard.querySelector('.js-insp-level');
+    var LV_COLOR = { major: '#d92d20', large: '#e06c00', general: '#a97600', '': '#8b9ba0' };
+    var lvItems = (st.byLevel || []).map(function (x) {
+      return { name: x.name, value: x.count, color: LV_COLOR[x.level] || '#8b9ba0' };
+    });
+    if (!lvItems.length) {
+      lvBox.appendChild(SD.comp.state.build('empty', {
+        title: '暂无巡检隐患数据',
+        desc: '在「安全巡检」里给任务填写「隐患条数」并选择「隐患等级」后，这里会按等级汇总。'
+      }));
+    } else {
+      lvBox.innerHTML = '<div class="t-3 t-sm" style="margin-bottom:6px">巡检隐患等级（按条数）</div>' +
+        SD.comp.chart.donut({
+          items: lvItems, unit: ' 条',
+          center: { top: String(st.hazardCount), bottom: '隐患条数' }
+        }) +
+        '<div class="chart-legend">' + lvItems.map(function (it) {
+          return '<span class="li"><span class="sw" style="background:' + it.color + '"></span>' +
+            U.esc(it.name) + ' <span class="v">' + it.value + '</span></span>';
+        }).join('') + '</div>';
+    }
+    host.appendChild(inspCard);
 
     /* ---------- 隐患趋势（台账口径） ----------
        这块是原有功能，本次口径调整**不动它**：
@@ -145,6 +220,7 @@ SD.views.dashboard = (function () {
       deptTrendCard.querySelector('.js-chart').innerHTML = SD.comp.chart.lineChart({
         labels: pt.months,
         height: 230,
+        unit: ' 张',            /* ★ 2026-11-11：原来没传，tooltip 落成「条」，与「张」对不上 */
         series: picked.map(function (d) {
           return { name: d.dept, color: colorOf[d.dept], data: d.data };
         })
@@ -211,6 +287,7 @@ SD.views.dashboard = (function () {
       typeCard.querySelector('.js-body').innerHTML =
         SD.comp.chart.donut({
           items: typeItems,
+          unit: ' 次',           /* ★ 2026-11-11：这里计的是「次数」，不是「条」 */
           center: { top: String(ip.totalTasks), bottom: '隐患次数' }
         }) +
         '<div class="chart-legend">' + typeItems.map(function (it) {
@@ -262,7 +339,10 @@ SD.views.dashboard = (function () {
     }
     host.appendChild(deptCard);
 
-    /* ---------- 口径说明 ---------- */
+    /* ---------- 口径说明 ----------
+       ★ 2026-11-11：追加第三段（巡检的隐患条数与整改状态）。
+         一、二两段的工程口径原文保持不变（其中几句被冒烟测试逐字断言），
+         只把「巡检没有等级」这句改成事实 —— 现在巡检有等级了。 */
     host.appendChild(U.h(
       '<section class="card tight t-3 t-sm">' +
       '<div><b class="t-2">口径说明</b></div>' +
@@ -273,9 +353,18 @@ SD.views.dashboard = (function () {
       '<b>隐患类型分布</b>同属巡检口径，但计的是<b>次数</b>：一条有照片的巡检记一次（含未分类），' +
       '所以类型合计 = 有隐患照片的任务数，不等于照片张数 —— 照片是证据，任务是事件。</div>' +
       '<div style="margin-top:4px"><b>二、隐患台账（状态口径）</b>　隐患趋势（新增 / 闭环）、闭环率、逾期未闭环、' +
-      '延期跟进、隐患等级分布、整改率均基于隐患台账条数 —— 巡检没有整改状态与等级，' +
-      '算不出闭环，也无法给隐患定级，所以这些指标必须留在台账口径。</div>' +
-      '<div style="margin-top:4px">两条口径在页面标题里已分别注明，不混算。</div>' +
+      '延期跟进、各部门整改率均基于隐患台账条数 —— 这些指标依赖「整改期限 + 状态机 + 闭环时间」，' +
+      '巡检侧没有这套流转，算不出闭环与逾期，所以必须留在台账口径。' +
+      '「隐患等级分布」的<b>台账那张</b>同样按台账条数与等级统计。</div>' +
+      '<div style="margin-top:4px"><b>三、巡检的隐患条数与整改状态（2026-11-11 统一口径）</b>　' +
+      '「隐患条数」= 巡检表单里人工填写的 <code>hazardCount</code> 之和，' +
+      '<b>不是照片张数、也不是任务数</b>；部门归属同样未填归「未指定部门」，因此<b>各单位条数相加恒等于总条数</b>。' +
+      '整改状态由证据推导、不另设字段：<b>有「整改日期」= 已整改</b>；<b>只有「整改照片」= 整改中</b>；两者都没有 = 未整改。' +
+      '<b>整改率 = 已整改条数 / 隐患条数</b>（按条不按任务，才不会出现「隐患 5 条、已整改 4 条、整改率 50%」）。' +
+      '「巡检隐患等级」按<b>条数</b>汇总：一条任务只填一个等级，其全部条数计入该等级，未填归「未定级」，' +
+      '因此等级合计 = 隐患条数。<b>巡检隐患不会自动生成隐患台账记录</b>，所以本段的「隐患条数」' +
+      '与台账口径的「已闭环 / 逾期 / 整改率」是两本账，不互相折算。</div>' +
+      '<div style="margin-top:4px">三条口径（张数 / 条数 / 台账条数）在页面各段标题里已分别注明，不混算。</div>' +
       '</section>'
     ));
   }

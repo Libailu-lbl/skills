@@ -352,6 +352,179 @@ function ok(name, cond, extra) {
     }
   }
 
+  /* ================= 13. 隐患条数与整改口径（★ 2026-11-11 统一口径） ================= */
+  console.log('== 13. 隐患条数 / 隐患等级 / 整改状态 ==');
+
+  /* ---- 13.1 表单字段与空选项（防空值被静默回填成第一项） ---- */
+  data().inspections = [{
+    id: 'IP-Z', code: 'FZXJ-2026-009', planName: '口径自检巡检', type: '日常巡检', area: 'Z 区',
+    dept: '生产一部', executor: '测试员', scheduledDate: d10, status: 'planned', photos: [],
+    /* 老结构：只有 record.hazardCount，没有顶层、没有等级 */
+    record: { findings: '旧记录', hazardCount: 2, signedBy: '测试员', signedAt: d10 }
+  }];
+  SD.store.save();
+  await SD.app.reload();
+  await go('inspection');
+  await wait(400);
+
+  let zOps = view().querySelector('[data-act="iops"]');
+  if (zOps) {
+    zOps.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    await wait(300);
+    const zEdit = Array.from(doc.querySelectorAll('.dd-item')).find(x => x.textContent.trim() === '编辑');
+    if (zEdit) { zEdit.dispatchEvent(new win.MouseEvent('click', { bubbles: true })); await wait(450); }
+  }
+  const zm = Array.from(doc.querySelectorAll('.mask .modal')).pop();
+  const zLabels = zm ? Array.from(zm.querySelectorAll('.field > span, label > span')).map(x => x.textContent.trim()) : [];
+  ok('编辑表单有「隐患条数」字段', zLabels.indexOf('隐患条数') >= 0, zLabels.join('/'));
+  ok('编辑表单有「隐患等级」字段', zLabels.indexOf('隐患等级') >= 0);
+  const hzEl = zm ? zm.querySelector('#ff_hazardCount') : null;
+  const lvEl = zm ? zm.querySelector('#ff_hazardLevel') : null;
+  ok('隐患条数是数字控件且 min=0', !!hzEl && hzEl.type === 'number' && hzEl.getAttribute('min') === '0',
+    hzEl && hzEl.type + '/' + hzEl.getAttribute('min'));
+  ok('隐患条数非必填', !!hzEl && !hzEl.closest('.field, label').classList.contains('req'));
+  ok('隐患等级下拉首项是「未定级」空值',
+    !!lvEl && lvEl.options[0].value === '' && /未定级/.test(lvEl.options[0].textContent),
+    lvEl && (lvEl.options[0].value + '/' + lvEl.options[0].textContent));
+  ok('隐患等级有 4 项（未定级 + 三级）', !!lvEl && lvEl.options.length === 4, lvEl && lvEl.options.length);
+  ok('老记录打开编辑：条数显示 2（不被读成 0）', !!hzEl && hzEl.value === '2', hzEl && hzEl.value);
+  ok('老记录打开编辑：等级显示为空（未定级）', !!lvEl && lvEl.value === '', lvEl && lvEl.value);
+
+  /* 不动条数直接保存 → 顶层必须补成 2，而不是被清零 */
+  if (zm) {
+    const zOk = zm.querySelector('.js-ok');
+    if (zOk) { zOk.dispatchEvent(new win.MouseEvent('click', { bubbles: true })); await wait(800); }
+  }
+  const zsaved = (SD.store.data().inspections.filter(t => t.id === 'IP-Z')[0] || {});
+  ok('保存后顶层 hazardCount = 2（老数据没被清零）', zsaved.hazardCount === 2, zsaved.hazardCount);
+  ok('未选等级保存后是空值（没被回填成「重大」）', zsaved.hazardLevel === '', zsaved.hazardLevel);
+  ok('record 镜像同步为 2', !zsaved.record || zsaved.record.hazardCount === 2,
+    zsaved.record && zsaved.record.hazardCount);
+
+  /* ---- 13.2 口径函数：造一组能对账的数据 ---- */
+  /* A 3 条/较大/已整改 · B 2 条/重大/整改中 · C 4 条/未定级/未整改 · D 0 条（不进任何口径） */
+  data().inspections = [
+    { id: 'IA', code: 'FZXJ-2026-101', planName: 'A', type: '日常巡检', area: 'A 区', dept: '生产一部',
+      executor: '测试员', scheduledDate: d10, status: 'done', photos: [], hazardCount: 3, hazardLevel: 'large',
+      fixDate: d10, fixPhotos: [], record: { findings: 'x', hazardCount: 3, signedBy: '测试员', signedAt: d10 } },
+    { id: 'IB', code: 'FZXJ-2026-102', planName: 'B', type: '日常巡检', area: 'B 区', dept: '生产一部',
+      executor: '测试员', scheduledDate: d10, status: 'planned', photos: [], hazardCount: 2, hazardLevel: 'major',
+      fixDate: '', fixPhotos: shot(1) },
+    { id: 'IC', code: 'FZXJ-2026-103', planName: 'C', type: '专项检查', area: 'C 区', dept: '',
+      executor: '测试员', scheduledDate: d05, status: 'rescheduled', photos: [], hazardCount: 4, hazardLevel: '',
+      fixDate: '', fixPhotos: [] },
+    { id: 'ID', code: 'FZXJ-2026-104', planName: 'D', type: '季节性检查', area: 'D 区', dept: '仓储部',
+      executor: '测试员', scheduledDate: d10, status: 'cancelled', photos: shot(1), hazardCount: 0, hazardLevel: '' }
+  ];
+  SD.store.save();
+  await SD.app.reload();
+  await wait(500);
+
+  const st = SD.app.state.summary.inspectionStats;
+  ok('summary 透出 inspectionStats', !!st);
+  ok('形状齐全（records/byStatus/weekRate/hazardCount/hazardTasks/byLevel/fix/fixRate/byDept）',
+    !!st && ['records', 'byStatus', 'weekRate', 'hazardCount', 'hazardTasks', 'byLevel', 'fix', 'fixRate', 'byDept']
+      .every(k => st[k] !== undefined));
+  ok('巡检记录 = 4（含改期 / 取消）', st.records === 4, st.records);
+  ok('byStatus 四态各自计数', st.byStatus.done === 1 && st.byStatus.planned === 1 &&
+    st.byStatus.rescheduled === 1 && st.byStatus.cancelled === 1, JSON.stringify(st.byStatus));
+  ok('隐患条数 = 3+2+4 = 9（0 条任务不计）', st.hazardCount === 9, st.hazardCount);
+  ok('有隐患任务数 = 3', st.hazardTasks === 3, st.hazardTasks);
+  ok('整改三态按条数：未整改 4 / 整改中 2 / 已整改 3',
+    st.fix.none === 4 && st.fix.doing === 2 && st.fix.done === 3, JSON.stringify(st.fix));
+  ok('三态相加 = 隐患条数', st.fix.none + st.fix.doing + st.fix.done === st.hazardCount);
+  ok('整改率 = 3/9 ≈ 33%', Math.round(st.fixRate * 100) === 33, st.fixRate);
+  ok('等级分布：重大 2 / 较大 3 / 未定级 4（固定顺序，与台账等级图一致）',
+    st.byLevel.map(x => x.name + x.count).join(',') === '重大2,较大3,未定级4',
+    st.byLevel.map(x => x.name + x.count).join(','));
+  ok('等级合计 = 隐患条数', st.byLevel.reduce((a, b) => a + b.count, 0) === st.hazardCount);
+  ok('部门条数合计 = 隐患条数',
+    st.byDept.reduce((a, b) => a + b.hazardCount, 0) === st.hazardCount,
+    JSON.stringify(st.byDept));
+  ok('未填部门归「未指定部门」', st.byDept.some(x => x.dept === '未指定部门'),
+    st.byDept.map(x => x.dept).join('|'));
+
+  /* ---- 13.3 看板：新段数值必须与 summary 一致 ---- */
+  await go('dashboard');
+  await wait(300);
+  const inspSec = Array.from(view().querySelectorAll('.card'))
+    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '安全巡检（隐患与整改）');
+  ok('看板有「安全巡检（隐患与整改）」段', !!inspSec);
+  const inspTxt = inspSec ? inspSec.textContent.replace(/\s+/g, ' ') : '';
+  ok('段内「巡检记录」= 4 项', /巡检记录\s*4\s*项/.test(inspTxt), inspTxt.slice(0, 80));
+  ok('段内「隐患条数」= 9 条', /隐患条数\s*9\s*条/.test(inspTxt));
+  ok('段内「已整改」= 3 条', /已整改\s*3\s*条/.test(inspTxt));
+  ok('段内「整改率」= 33%', /整改率\s*33%/.test(inspTxt), inspTxt.slice(0, 120));
+  ok('段内写明三态明细（未整改 4 / 整改中 2 / 已整改 3）',
+    /未整改\s*4\s*条/.test(inspTxt) && /整改中\s*2\s*条/.test(inspTxt));
+  ok('等级环图中心显示隐患条数 9', /隐患条数/.test(inspTxt) && /\b9\b/.test(inspTxt));
+  ok('顶部 KPI 仍然正好 4 张（新段没用 cols-4）',
+    view().querySelectorAll('.grid.cols-4 > *').length === 4,
+    view().querySelectorAll('.grid.cols-4 > *').length);
+  ok('新段等级图标注「按条数」，与台账等级图区分',
+    /按条数/.test(inspTxt) && /隐患等级分布/.test(view().textContent));
+
+  /* 口径说明：新段存在且旧四句仍在 */
+  const noteTxt = view().textContent.replace(/\s+/g, ' ');
+  ok('口径说明写明条数不是照片张数 / 任务数',
+    /不是照片张数、也不是任务数/.test(noteTxt));
+  ok('口径说明写明整改三态的推导规则',
+    /有「整改日期」= 已整改/.test(noteTxt) && /整改照片.*整改中/.test(noteTxt));
+  ok('口径说明写明巡检隐患不自动进台账',
+    /不会自动生成隐患台账记录/.test(noteTxt));
+  ok('口径说明旧四句仍在（回归护栏）',
+    /各部门相加恒等于总张数/.test(noteTxt) && /未填的归「未指定部门」/.test(noteTxt) &&
+    /闭环率、逾期未闭环/.test(noteTxt) && /整改率/.test(noteTxt));
+
+  /* ---- 13.4 巡检页汇总条：与看板 / summary 三方同值 ---- */
+  await go('inspection');
+  await wait(300);
+  const sumBar = view().querySelector('.js-insp-sum');
+  ok('巡检页有口径汇总条', !!sumBar);
+  const sumTxt = sumBar ? sumBar.textContent.replace(/\s+/g, ' ') : '';
+  ok('汇总条写明「不限本周 / 年份」', /不限本周/.test(sumTxt), sumTxt.slice(0, 60));
+  ok('汇总条「全部记录」= 4 项', /4\s*项/.test(sumTxt));
+  ok('汇总条「发现隐患」= 9 条', /发现隐患\s*9\s*条/.test(sumTxt));
+  ok('汇总条整改率 = 33%', /整改率\s*33%/.test(sumTxt));
+  ok('巡检页与看板数字一致（9 条 / 33%）',
+    /发现隐患\s*9\s*条/.test(sumTxt) && /隐患条数\s*9\s*条/.test(inspTxt) &&
+    /整改率\s*33%/.test(sumTxt) && /整改率\s*33%/.test(inspTxt));
+  const sumBtn = sumBar && sumBar.querySelector('.js-go-dash');
+  ok('汇总条有「去数据看板」入口（不含「新增」字样，避免抢新增按钮）',
+    !!sumBtn && /去数据看板/.test(sumBtn.textContent) && !/新增/.test(sumBtn.textContent),
+    sumBtn ? sumBtn.textContent : '无');
+
+  /* ---- 13.5 标记完成弹窗：条数初值 + 等级可填 ---- */
+  data().inspections = [{
+    id: 'IP-CP', code: 'FZXJ-2026-201', planName: '标记完成自检', type: '日常巡检', area: 'P 区',
+    dept: '生产一部', executor: '测试员', scheduledDate: d10, status: 'planned', photos: [],
+    hazardCount: 5, hazardLevel: 'general', fixDate: '', fixPhotos: []
+  }];
+  SD.store.save();
+  await SD.app.reload();
+  await go('inspection');
+  await wait(400);
+  const cpOps = view().querySelector('[data-act="iops"]');
+  if (cpOps) {
+    cpOps.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    await wait(300);
+    const cpDone = Array.from(doc.querySelectorAll('.dd-item')).find(x => /标记完成/.test(x.textContent));
+    if (cpDone) { cpDone.dispatchEvent(new win.MouseEvent('click', { bubbles: true })); await wait(400); }
+  }
+  const cpm = Array.from(doc.querySelectorAll('.mask .modal')).pop();
+  const cpText = cpm ? cpm.textContent : '';
+  ok('标记完成弹窗标签改为「隐患条数」', /隐患条数/.test(cpText) && !/发现隐患数/.test(cpText), cpText.slice(0, 60));
+  ok('标记完成弹窗有「隐患等级」下拉', !!cpm && !!cpm.querySelector('#i_hzlv'));
+  ok('标记完成弹窗条数初值取已有值 5',
+    !!cpm && (cpm.querySelector('#i_hz') || {}).value === '5',
+    cpm && (cpm.querySelector('#i_hz') || {}).value);
+  ok('标记完成弹窗等级预选「一般」',
+    !!cpm && (cpm.querySelector('#i_hzlv') || {}).value === 'general',
+    cpm && (cpm.querySelector('#i_hzlv') || {}).value);
+  const cpCancel = cpm && Array.from(cpm.querySelectorAll('.btn')).find(b => /取消|关闭/.test(b.textContent));
+  if (cpCancel) cpCancel.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  await wait(200);
+
   ok('全程无 JS 报错', errors.length === 0, errors.join(' | ').slice(0, 200));
 
   console.log('\n结果：通过 ' + pass + ' / 失败 ' + fail);
