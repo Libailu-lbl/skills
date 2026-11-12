@@ -141,6 +141,8 @@ function ok(name, cond, extra) {
   ok('看板 KPI 首卡改为「隐患照片」',
     /隐患照片/.test((view().querySelector('.grid.cols-4 > *') || {}).textContent || ''));
   ok('看板「暂无部门数据」空态', view().textContent.indexOf('暂无部门数据') >= 0);
+  /* ★ 2026-11-12：分部门条数行只在真有隐患条数时才出现，空态不能留一条空行 */
+  ok('空态不显示「分部门隐患条数」行', !view().querySelector('.js-insp-dept'));
   /* ★ 2026-11-11：看板新增「安全巡检（隐患与整改）」段（巡检口径：记录 / 条数 / 整改状态），
      与巡检页汇总条同源；空数据时这段也要给出自己的空态。 */
   const blankInspSec = Array.from(view().querySelectorAll('.card'))
@@ -383,6 +385,11 @@ function ok(name, cond, extra) {
   ok('巡检表单有状态下拉（默认待执行）',
     cm && !!cm.querySelector('#ff_status') && cm.querySelector('#ff_status').value === 'planned',
     cm && cm.querySelector('#ff_status') && cm.querySelector('#ff_status').value);
+  /* ★ 2026-11-12：多部门是「可选模式」，新增时默认仍是单部门表单 ——
+     老用户的录入路径不能多一次点击，也不能凭空多出一堆空行 */
+  ok('新增巡检默认单部门（有「按部门拆分」入口、无明细行）',
+    cm && !!cm.querySelector('.js-split') && cm.querySelectorAll('.pr-row').length === 0,
+    cm && cm.querySelectorAll('.pr-row').length);
   set(cm, 'ff_planName', '编号冒烟'); set(cm, 'ff_area', 'A 区'); set(cm, 'ff_executor', '李佰陆');
   set(cm, 'ff_code', 'BAD');
   await submit(cm, 700);

@@ -380,6 +380,8 @@ SD.metrics = (function () {
          不需要任何迁移，历史照片照常计数。
        · 部门归属：取巡检任务的 dept（责任部门）；空值统一归「未指定部门」，
          保证「各部门合计 === 总照片数」，账能对上，也提醒补填部门。
+         ★ 2026-11-12：一条单可分多个部门，部门 / 类型改按「问题明细行」归属；
+           老记录没有 problems，仍取顶层 dept / hazardType，结果与改造前完全一致。
        · 时间归属：按 scheduledDate（计划日期）分月，与巡检列表「归年」口径一致。
        · 不排除任何任务状态：照片一旦上传即为现场证据，任务后续改期 / 取消也照算。
          若按状态排除，用户会看到列表里明明有照片、看板却不计数，属对不上账。
@@ -389,7 +391,8 @@ SD.metrics = (function () {
          没填类型的归「未分类」但仍计入，保证类型合计 = 有隐患照片的任务数。
 
      输出：{
-       totalPhotos 总张数 · totalTasks 有照片的任务数
+       totalPhotos 总张数 · totalTasks 上报单元数（有照片的行；老记录=记录本身）
+       totalRecords 有照片的记录数（★ 2026-11-12，多部门单据此区分「处」与「项任务」）
        byDept   [{dept, photos, tasks}] 按照片数降序
        byType   [{type, tasks, photos}] 按任务数降序（看板「隐患类型分布」用）
        trend    { months:[12], depts:[{dept, data:[12], total}] } 近 12 个月按部门
@@ -402,26 +405,112 @@ SD.metrics = (function () {
     return Object.prototype.toString.call(t && t.photos) === '[object Array]' ? t.photos.length : 0;
   }
 
-  /* ---------------- 巡检隐患条数（★ 2026-11-11 统一口径）----------------
-     同一个业务数字在历史上有两个落点，这是「巡检页与看板对不上」的根因：
-       · 「标记完成」弹窗 → 写**顶层** hazardCount（dataSource.completeInspection）
-       · 编辑表单选「已完成」→ 只写 record.hazardCount（inspection.js）
-     统一规则：**顶层为准**，record 里的只作老数据兼容兜底。
-     写入侧从 v1.3.5 起两边同步（见 inspection.js / dataSource.js），
-     读取一律走本函数，任何地方都不要再直接读 t.hazardCount。 */
-  function hazardCountOf(t) {
+  /* ---------------- 分部门问题明细（★ 2026-11-12）----------------
+     一张巡检单可以登记多个部门各自的问题，存为 problems[]（**唯一真值**）：
+       { id, dept, content, type, level, count, photos[], fixDate, fixPhotos[] }
+     顶层 dept / hazardType / hazardCount / hazardLevel / photos / fixDate / fixPhotos
+     降级为「兼容镜像」——保存时按行汇总写回，供列表角标、灯箱、打印、导出、报表、待办读取。
+     聚合一律走本节函数：有 problems 就只读行，绝不与镜像重复累加。
+
+     ★ 老记录（无 problems）视为「一行合成行」，所以所有统计值与改造前逐值相同。
+       这是「升级不动历史数字」的结构保证，不是靠人工对账。 */
+  function legacyCountOf(t) {
     if (!t) return 0;
     if (t.hazardCount != null && t.hazardCount !== '') return Math.max(0, Number(t.hazardCount) || 0);
     var r = t.record && t.record.hazardCount;
     return Math.max(0, Number(r) || 0);
   }
 
-  /** 整改状态：纯派生，不存字段（有整改日期=已整改；只有整改照片=整改中；都没有=未整改） */
+  function arrOf(v) {
+    return Object.prototype.toString.call(v) === '[object Array]' ? v : [];
+  }
+
+  /** 行归一化：所有消费方看到的行形状必须一致（缺字段一律补默认值） */
+  function normRow(r, i) {
+    r = r || {};
+    /* 未知等级键必须归成 ''，否则 LEVEL_ORDER 过滤后 Σ byLevel 会小于 hazardCount */
+    var lv = LEVEL_ORDER.indexOf(r.level) >= 0 ? r.level : '';
+    return {
+      id: r.id || ('p' + (i + 1)),
+      dept: String(r.dept || ''),
+      content: String(r.content || ''),
+      type: String(r.type || ''),
+      level: lv,
+      count: Math.max(0, Number(r.count) || 0),
+      photos: arrOf(r.photos),
+      fixDate: String(r.fixDate || ''),
+      fixPhotos: arrOf(r.fixPhotos)
+    };
+  }
+
+  /** 问题行（唯一取数口）：有 problems 用 problems，否则用顶层字段合成一行 */
+  function problemRowsOf(t) {
+    if (!t) return [];
+    var list = arrOf(t.problems);
+    if (list.length) return list.map(normRow);
+    return [{
+      id: 'legacy',
+      dept: String(t.dept || ''),
+      content: String((t.record && t.record.findings) || ''),
+      type: String(t.hazardType || ''),
+      level: LEVEL_ORDER.indexOf(t.hazardLevel) >= 0 ? t.hazardLevel : '',
+      count: legacyCountOf(t),
+      photos: arrOf(t.photos),
+      fixDate: String(t.fixDate || ''),
+      fixPhotos: arrOf(t.fixPhotos)
+    }];
+  }
+
+  /** 整单隐患条数 = Σ 各行条数（老记录合成行 → 与旧实现逐值相同）
+      历史背景：条数曾同时落在顶层与 record.hazardCount，读取一律走这里，
+      任何地方都不要再直接读 t.hazardCount。 */
+  function hazardCountOf(t) {
+    return problemRowsOf(t).reduce(function (a, r) { return a + r.count; }, 0);
+  }
+
+  /** 单行整改状态：有整改日期=已整改；只有整改照片=整改中；都没有=未整改 */
+  function rowFixStatusOf(r) {
+    if (!r) return 'none';
+    if (r.fixDate) return 'done';
+    if (arrOf(r.fixPhotos).length) return 'doing';
+    return 'none';
+  }
+
+  /** 整单整改状态：按「有条数的行」聚合 —— 全 done 才 done；有 none 则 none；否则 doing。
+      纯照片行（条数 0）不参与判定，否则「没登记的隐患」会把整单拖成未整改。 */
   function fixStatusOf(t) {
     if (!t) return 'none';
-    if (t.fixDate) return 'done';
-    if (Object.prototype.toString.call(t.fixPhotos) === '[object Array]' && t.fixPhotos.length) return 'doing';
-    return 'none';
+    var rows = problemRowsOf(t).filter(function (r) { return r.count > 0; });
+    if (!rows.length) {
+      if (t.fixDate) return 'done';
+      return arrOf(t.fixPhotos).length ? 'doing' : 'none';
+    }
+    var allDone = true, hasNone = false;
+    rows.forEach(function (r) {
+      var s = rowFixStatusOf(r);
+      if (s !== 'done') allDone = false;
+      if (s === 'none') hasNone = true;
+    });
+    return allDone ? 'done' : (hasNone ? 'none' : 'doing');
+  }
+
+  /** 整单隐患照片（逐行拼接；老记录即 t.photos）。列表角标 / 灯箱 / 打印用 */
+  function problemPhotosOf(t) {
+    var out = [];
+    problemRowsOf(t).forEach(function (r) { out = out.concat(r.photos); });
+    return out;
+  }
+
+  /** 照片「上报单元」：有 problems 时 = 有照片的行，老记录 = 记录本身。
+      ← 「项 / 次」这个量的分母。按单元而不是按记录，才能让
+        Σ byType.tasks === totalTasks 在多部门单上依然成立（否则图例说 2、中心说 1）。 */
+  function photoUnitsOf(t) {
+    var units = [];
+    problemRowsOf(t).forEach(function (r) {
+      if (!r.photos.length) return;
+      units.push({ dept: r.dept || NO_DEPT, type: r.type || NO_TYPE, n: r.photos.length });
+    });
+    return units;
   }
 
   function inspectionPhotos(data, today) {
@@ -432,33 +521,38 @@ SD.metrics = (function () {
     var thisYM = U.ym(today);
     for (var i = 11; i >= 0; i--) months.push(U.shiftYM(thisYM, -i));
 
-    var totalPhotos = 0, totalTasks = 0;
+    var totalPhotos = 0, totalTasks = 0, totalRecords = 0;
     var byDept = {};
     var trendMap = {};
     var byTypeMap = {};
 
     insp.forEach(function (t) {
-      var n = photoCountOf(t);
-      if (!n) return;
-      var dept = t.dept || NO_DEPT;
+      /* ★ 2026-11-12：按「上报单元」累加（多部门单 = 各行，老记录 = 记录本身）。
+         注意与条数口径的过滤条件不同 —— 这里是 photos 为空才跳过，
+         0 条但拍了照的行必须照常计张数（现场常见：拍了照忘了填条数）。 */
+      var units = photoUnitsOf(t);
+      if (!units.length) return;
+      totalRecords += 1;
 
-      totalPhotos += n;
-      totalTasks += 1;
+      var ym = t.scheduledDate ? U.ym(t.scheduledDate) : '';
+      var inWin = !!ym && months.indexOf(ym) >= 0;
 
-      byDept[dept] = byDept[dept] || { dept: dept, photos: 0, tasks: 0 };
-      byDept[dept].photos += n;
-      byDept[dept].tasks += 1;
+      units.forEach(function (u) {
+        totalPhotos += u.n;
+        totalTasks += 1;
 
-      var tp = t.hazardType || NO_TYPE;
-      byTypeMap[tp] = byTypeMap[tp] || { type: tp, tasks: 0, photos: 0 };
-      byTypeMap[tp].tasks += 1;
-      byTypeMap[tp].photos += n;
+        byDept[u.dept] = byDept[u.dept] || { dept: u.dept, photos: 0, tasks: 0 };
+        byDept[u.dept].photos += u.n;
+        byDept[u.dept].tasks += 1;
 
-      if (!t.scheduledDate) return;
-      var ym = U.ym(t.scheduledDate);
-      if (months.indexOf(ym) < 0) return;
-      trendMap[dept] = trendMap[dept] || {};
-      trendMap[dept][ym] = (trendMap[dept][ym] || 0) + n;
+        byTypeMap[u.type] = byTypeMap[u.type] || { type: u.type, tasks: 0, photos: 0 };
+        byTypeMap[u.type].tasks += 1;
+        byTypeMap[u.type].photos += u.n;
+
+        if (!inWin) return;
+        trendMap[u.dept] = trendMap[u.dept] || {};
+        trendMap[u.dept][ym] = (trendMap[u.dept][ym] || 0) + u.n;
+      });
     });
 
     var list = Object.keys(byDept).map(function (k) { return byDept[k]; })
@@ -476,6 +570,9 @@ SD.metrics = (function () {
     return {
       totalPhotos: totalPhotos,
       totalTasks: totalTasks,
+      /* ★ 2026-11-12 新增：有照片的记录数。多部门单的 totalTasks 是「处」，
+         与「任务」不是一回事 —— 看板据此在两者不等时补一句「共 N 项任务」 */
+      totalRecords: totalRecords,
       byDept: list,
       byType: typeList,
       trend: { months: months, depts: depts }
@@ -492,19 +589,22 @@ SD.metrics = (function () {
        · records      = 全部巡检记录数（含改期 / 取消，不筛状态）
        · byStatus     = 四种任务状态各自条数
        · weekRate     = 复用 weekInspectionRate（本周已完成 / 本周计划，排除取消，改期不减免）
-       · hazardCount  = Σ hazardCountOf(t)  ← **隐患条数的唯一口径**（人工填报，不是照片张数）
-       · hazardTasks  = 条数 > 0 的任务数（"这 N 条来自几个巡检任务"）
-       · fix          = 整改三态，**按条数累计**（不是任务数）：
-                        fixDate 有 → done 已整改；fixDate 空但 fixPhotos 有 → doing 整改中；否则 none
+       · hazardCount  = Σ 各行 count ← **隐患条数的唯一口径**（人工填报，不是照片张数）
+       · hazardTasks  = 条数 > 0 的**任务**数（"这 N 条来自几个巡检任务"）
+                        ⚠ 记录级：一张单不论拆几个部门都只算 1 个任务
+       · fix          = 整改三态，**按条数累计**（不是任务数），按行判定：
+                        该行 fixDate 有 → done；只有 fixPhotos → doing；否则 none
+       · fixTasks     = 整改三态按**记录**累计（整单闭环任务数，供对照，UI 未使用）
        · fixRate      = done / hazardCount（0 条时为 null，页面显示「—」）
                         —— 用条数做分母，才能和上面几个数字同量纲，不会出现
                            「隐患 5 条、已整改 4 条、整改率 50%」这种自相矛盾
-       · byLevel      = 按 hazardLevel 分组，value = 该组 Σ hazardCount（空 → 未定级）
-                        一条任务只填一个等级，其全部条数计入该等级 → Σ byLevel === hazardCount
-       · byDept       = 按 dept 分组（空 → 未指定部门），给条数与任务数 → Σ === hazardCount
+       · byLevel      = 按行 level 分组，value = 该组 Σ count（空 → 未定级）
+                        每一行的条数整体计入该行等级 → Σ byLevel === hazardCount
+       · byDept       = 按行 dept 分组（空 → 未指定部门），给条数与涉及任务数
+                        → Σ hazardCount === hazardCount；tasks 按 (记录,部门) 去重
        · **不按任务状态过滤**：照片/条数都是既成事实，任务改期或取消也照算
          （与 inspectionPhotos 同一态度，否则列表里有、看板没有，属对不上账）。
-       · 无隐患任务（条数=0）不进隐患 / 整改口径，避免"没发现问题"被算成"未整改"。
+       · 无隐患任务（Σ 条数 = 0）不进隐患 / 整改口径，避免"没发现问题"被算成"未整改"。
      ------------------------------------------------------------------ */
   var LEVEL_ORDER = ['major', 'large', 'general'];
 
@@ -521,23 +621,29 @@ SD.metrics = (function () {
     insp.forEach(function (t) {
       if (byStatus[t.status] != null) byStatus[t.status]++;
 
-      var n = hazardCountOf(t);
+      var rows = problemRowsOf(t);
+      var n = 0;
+      rows.forEach(function (r) { n += r.count; });
       if (!n) return;                       // 无隐患任务：不进隐患 / 整改口径
 
       hazardCount += n;
-      hazardTasks += 1;
+      hazardTasks += 1;                     // ★ 记录级，不能按行 ++
 
-      var fs = fixStatusOf(t);
-      fix[fs] += n;
-      fixTasks[fs] += 1;
+      fixTasks[fixStatusOf(t)] += 1;        // 整单闭环任务数
 
-      var lv = t.hazardLevel || '';
-      byLevelMap[lv] = (byLevelMap[lv] || 0) + n;
+      var seenDept = {};
+      rows.forEach(function (r) {
+        if (!r.count) return;               // ★ 条数口径的过滤条件，与照片口径分开写
+        fix[rowFixStatusOf(r)] += r.count;
+        byLevelMap[r.level] = (byLevelMap[r.level] || 0) + r.count;
 
-      var dept = t.dept || NO_DEPT;
-      byDeptMap[dept] = byDeptMap[dept] || { dept: dept, hazardCount: 0, tasks: 0 };
-      byDeptMap[dept].hazardCount += n;
-      byDeptMap[dept].tasks += 1;
+        var dept = r.dept || NO_DEPT;
+        byDeptMap[dept] = byDeptMap[dept] || { dept: dept, hazardCount: 0, tasks: 0 };
+        byDeptMap[dept].hazardCount += r.count;
+        seenDept[dept] = 1;
+      });
+      /* 同一张单多个部门：每个部门各 +1 个任务，但同一部门在一张单里只算一次 */
+      Object.keys(seenDept).forEach(function (d) { byDeptMap[d].tasks += 1; });
     });
 
     /* 等级固定顺序（重大→较大→一般→未定级），配色与台账等级图一致；
@@ -776,6 +882,10 @@ SD.metrics = (function () {
     inspectionStats: inspectionStats,
     hazardTrend: hazardTrend,
     hazardCountOf: hazardCountOf,
+    /* ★ 2026-11-12 分部门明细：视图侧唯一取数口。任何地方都不要再直接读 t.problems */
+    hazardRowsOf: problemRowsOf,
+    problemPhotosOf: problemPhotosOf,
+    rowFixStatusOf: rowFixStatusOf,
     fixStatusOf: fixStatusOf,
     NO_DEPT: NO_DEPT,
     NO_LEVEL: NO_LEVEL,

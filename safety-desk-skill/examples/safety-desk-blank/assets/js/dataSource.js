@@ -268,14 +268,22 @@ SD.api = (function () {
       if (!hit) throw new Error('巡检任务不存在：' + id);
       hit.status = 'done';
       hit.completedAt = U.today();
-      /* ★ 2026-11-11：隐患条数的**顶层字段是唯一口径**。
-         payload 没带条数时不能无脑写 0（重复点「标记完成」会把已填的条数抹掉），
-         先退回原值，再退回 record 里的历史镜像。 */
-      hit.hazardCount = (payload.hazardCount == null || payload.hazardCount === '')
-        ? SD.metrics.hazardCountOf(hit)
-        : Math.max(0, Number(payload.hazardCount) || 0);
-      /* 隐患等级同样：没传就保留原值，别把填过的等级清掉 */
-      if (payload.hazardLevel != null) hit.hazardLevel = payload.hazardLevel || '';
+      /* ★ 2026-11-12：一单多部门时，条数与等级是**明细汇总**，不许被任何标量写入覆盖 ——
+         待办页的「一键完成」就曾写死 hazardCount: 0，把多部门单的条数清零。
+         这里按有无 problems 分支：有明细就只认明细，没有再走原来的「顶层为准」逻辑。 */
+      var multi = !!(hit.problems && hit.problems.length);
+      if (multi) {
+        hit.hazardCount = SD.metrics.hazardCountOf(hit);
+      } else {
+        /* ★ 2026-11-11：隐患条数的**顶层字段是唯一口径**。
+           payload 没带条数时不能无脑写 0（重复点「标记完成」会把已填的条数抹掉），
+           先退回原值，再退回 record 里的历史镜像。 */
+        hit.hazardCount = (payload.hazardCount == null || payload.hazardCount === '')
+          ? SD.metrics.hazardCountOf(hit)
+          : Math.max(0, Number(payload.hazardCount) || 0);
+        /* 隐患等级同样：没传就保留原值，别把填过的等级清掉 */
+        if (payload.hazardLevel != null) hit.hazardLevel = payload.hazardLevel || '';
+      }
       hit.record = {
         findings: payload.findings || '现场正常，无异常项',
         /* record 里留一份镜像（兼容老读取方），口径仍以顶层为准 */

@@ -121,69 +121,262 @@ SD.views.inspection = (function () {
     });
   }
 
+  /* ---------------- 分部门问题明细（★ 2026-11-12）----------------
+     一张巡检单可登记多个部门各自的问题。设计上刻意做成「可选模式」：
+       · 单部门（默认，也是全部老记录）：表单与 v1.3.5 完全一样，一个字段都不动
+       · 多部门：点「按部门拆分」后把 7 个标量字段整块隐藏，改用行编辑器
+     这样老用户的习惯不变、老记录的编辑路径不变，回归面也最小。
+
+     为什么隐藏而不是删字段：`#ff_*` 是 formDialog 的取值契约，
+     行内一旦出现同名 id，主表单的照片/条数就会串行；而且隐藏后
+     readValues 仍能拿到值，改回单部门时不会丢。 */
+  var MULTI_FIELDS = ['dept', 'hazardType', 'hazardCount', 'hazardLevel', 'photos', 'fixDate', 'fixPhotos'];
+  var LV_RANK = { major: 3, large: 2, general: 1 };
+
+  /** 把一个标量表单值转成一条明细行（点「按部门拆分」时的第 1 行） */
+  function seedRow(v) {
+    return {
+      dept: v.dept || '',
+      content: '',
+      type: v.hazardType || '',
+      level: v.hazardLevel || '',
+      count: Math.max(0, Number(v.hazardCount) || 0),
+      photos: v.photos || [],
+      fixDate: v.fixDate || '',
+      fixPhotos: v.fixPhotos || []
+    };
+  }
+
+  /** 明细行 → 整单汇总（顶层字段降级为镜像，统计仍只读行） */
+  function summarizeRows(rows) {
+    var sum = 0, level = '', dept = '', type = '', fixDate = '';
+    var photos = [], fixPhotos = [];
+    rows.forEach(function (r) {
+      if (!dept && r.dept) dept = r.dept;
+      if (!type && r.type) type = r.type;
+      if (!fixDate && r.fixDate) fixDate = r.fixDate;
+      sum += r.count;
+      if ((LV_RANK[r.level] || 0) > (LV_RANK[level] || 0)) level = r.level;
+      photos = photos.concat(r.photos);
+      fixPhotos = fixPhotos.concat(r.fixPhotos);
+    });
+    return {
+      dept: dept, hazardType: type, hazardCount: sum, hazardLevel: level,
+      photos: photos, fixDate: fixDate, fixPhotos: fixPhotos
+    };
+  }
+
+  /** 明细行 → 执行记录里的「现场情况」（比一句「无异常项」有信息量） */
+  function findingsOf(rows) {
+    var parts = rows.filter(function (r) { return r.content; }).map(function (r) {
+      return (r.dept ? r.dept + '：' : '') + r.content;
+    });
+    return parts.length ? parts.join('；') : '现场正常，无异常项';
+  }
+
+  /** 历史部门名（做 datalist 建议，省得每次手打还打错字） */
+  function deptOptions() {
+    var seen = {}, out = [];
+    ((SD.app.state.summary && SD.app.state.summary.inspections) || []).forEach(function (r) {
+      SD.metrics.hazardRowsOf(r).forEach(function (p) {
+        var d = String(p.dept || '').trim();
+        if (d && !seen[d]) { seen[d] = 1; out.push(d); }
+      });
+    });
+    return out;
+  }
+
   /* ---------------- 新增 / 编辑巡检任务 ---------------- */
   function openForm(ctx, t) {
     var isEdit = !!t;
     var hzN = isEdit ? SD.metrics.hazardCountOf(t) : 0;
-    SD.comp.formDialog.open({
+    var fieldList = resolveFields(t);
+    var editor = null;        // 多部门模式下的行编辑器
+    var multiMode = false;
+    var host = null, splitBar = null;
+
+    var dlg = SD.comp.formDialog.open({
       title: isEdit ? '编辑巡检任务' : '新增巡检任务',
-      width: 620,
-      fields: resolveFields(t),
+      width: 720,
+      fields: fieldList,
       /* ★ 2026-11-11：老记录的条数可能只存在 record.hazardCount 里，
          这里必须把读出来的值注入表单 —— 否则输入框显示 0，用户只改个备注点保存，
          顶层 hazardCount 就被写成 0，历史条数被抹掉（数据损坏级）。 */
       values: isEdit ? Object.assign({}, t, { hazardCount: hzN }) : {},
       hint: isEdit ? '' : '新增后自动计入本周完成率分母',
       okText: isEdit ? '保存' : '新增',
-      /* 表单级校验：条数必须是整数（半条隐患没有意义，也会把统计带小数） */
+      /* 表单级校验：单部门模式条数必须是整数；多部门模式交给行编辑器逐行校验 */
       validate: function (v) {
+        if (multiMode && editor) return editor.validate() || undefined;
         if (v.hazardCount != null && v.hazardCount !== '' && Number(v.hazardCount) !== Math.floor(Number(v.hazardCount))) {
           return '「隐患条数」请填整数';
         }
       },
+      onMount: function (modal) {
+        var ht = modal.querySelector('#ff_hazardType');
+        var anchor = ht && ht.closest ? ht.closest('.field') : null;
+        host = U.h('<div class="field full"></div>');
+        if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(host, anchor);
+        else (modal.querySelector('.grid-form') || modal).appendChild(host);
+
+        function fieldOf(name) {
+          var el = modal.querySelector('#ff_' + name);
+          return el && el.closest ? el.closest('.field') : null;
+        }
+
+        function hideScalars(on) {
+          MULTI_FIELDS.forEach(function (n) {
+            var f = fieldOf(n);
+            if (f) f.style.display = on ? 'none' : '';
+          });
+        }
+
+        function showSplitBar() {
+          splitBar = U.h('<div class="pr-splitbar">' +
+            '<button type="button" class="btn sm ghost js-split">' +
+              SD.icons.get('plus', 14) + '按部门拆分（一单记录多个部门）</button>' +
+            '<span class="t-3 t-sm">一趟巡检走了几个部门、各有各的问题时才用；' +
+            '单个部门照常填下面的「隐患条数 / 照片」即可</span></div>');
+          host.innerHTML = '';
+          host.appendChild(splitBar);
+          splitBar.querySelector('.js-split').addEventListener('click', function () {
+            /* 用**当前表单值**（不是 t）灌第 1 行，否则用户刚改的条数会丢 */
+            var cur = SD.comp.formDialog.readValues(modal, fieldList, t);
+            enterMulti([seedRow(cur)]);
+          });
+        }
+
+        function enterMulti(rows) {
+          multiMode = true;
+          editor = null;
+          host.innerHTML = '';
+          var backBtn = U.h('<button type="button" class="btn sm ghost js-unsplit" ' +
+            'title="回到单部门表单：整单的条数 / 等级 / 照片 / 整改由明细自动汇总">取消拆分</button>');
+          backBtn.addEventListener('click', exitMulti);
+          /* 组件内部若抛错，dialog 的 onMount 异常会被静默吞掉（表现是按钮没反应），
+             所以这里兜一层并明确告知 */
+          try {
+            editor = SD.comp.problemRows.mount(host, {
+              value: rows, depts: deptOptions(), actions: [backBtn]
+            });
+          } catch (err) {
+            multiMode = false;
+            showSplitBar();
+            U.toast('明细录入区加载失败，已退回单部门模式', 'err');
+            return;
+          }
+          hideScalars(true);
+        }
+
+        /* 取消拆分：把第 1 行回填到标量字段（不让已填的内容凭空消失），再恢复原表单 */
+        function exitMulti() {
+          var rows = editor ? editor.get() : [];
+          if (rows.length) {
+            var s = summarizeRows(rows);
+            var setV = function (id, val) {
+              var el = modal.querySelector('#ff_' + id);
+              if (el) el.value = val == null ? '' : val;
+            };
+            setV('dept', s.dept); setV('hazardType', s.hazardType);
+            setV('hazardCount', s.hazardCount); setV('hazardLevel', s.hazardLevel);
+            setV('fixDate', s.fixDate);
+            var ph = modal.querySelector('#ff_photos');
+            if (ph && ph._ph) ph._ph.set(s.photos || []);
+            var fp = modal.querySelector('#ff_fixPhotos');
+            if (fp && fp._ph) fp._ph.set(s.fixPhotos || []);
+          }
+          multiMode = false;
+          editor = null;
+          hideScalars(false);
+          showSplitBar();
+        }
+
+        /* 已有明细的记录（多部门单）打开即进多部门模式；老记录仍走单部门表单 */
+        var existRows = (isEdit && SD.metrics.hazardRowsOf(t)) || [];
+        var hasProblems = !!(isEdit && t.problems && t.problems.length);
+        if (hasProblems) enterMulti(existRows);
+        else showSplitBar();
+      },
       onSubmit: function (v) {
         var status = v.status || 'planned';
-        var hz = Number(v.hazardCount) || 0;
-        var payload = {
-          code: v.code,
-          planName: v.planName, type: v.type, area: v.area,
-          dept: v.dept || '', executor: v.executor,
-          scheduledDate: v.scheduledDate, remark: v.remark || '',
-          hazardType: v.hazardType || '',
-          /* ★ 2026-11-11 新增：隐患条数 / 隐患等级（看板口径的两个来源） */
-          hazardCount: hz,
-          hazardLevel: v.hazardLevel || '',
-          /* ★ 2026-11-11 新增：整改照片 / 整改日期（与隐患照片 photos 分开存） */
-          fixDate: v.fixDate || '',
-          fixPhotos: v.fixPhotos || [],
-          status: status,
-          photos: v.photos || []
-        };
+        var rows = (multiMode && editor) ? editor.get() : null;
+        var payload;
+
+        if (rows) {
+          var s = summarizeRows(rows);
+          payload = {
+            code: v.code,
+            planName: v.planName, type: v.type, area: v.area,
+            dept: s.dept, executor: v.executor,
+            scheduledDate: v.scheduledDate, remark: v.remark || '',
+            hazardType: s.hazardType,
+            hazardCount: s.hazardCount,
+            hazardLevel: s.hazardLevel,
+            fixDate: s.fixDate,
+            fixPhotos: s.fixPhotos,
+            status: status,
+            photos: s.photos,
+            /* ★ 唯一真值；顶层 7 个字段只是镜像 */
+            problems: rows
+          };
+          if (status === 'done') {
+            payload.completedAt = (isEdit && t.completedAt) || SD.utils.today();
+            payload.record = {
+              findings: findingsOf(rows),
+              hazardCount: s.hazardCount,
+              signedBy: payload.executor,
+              signedAt: payload.completedAt
+            };
+          }
+        } else {
+          payload = {
+            code: v.code,
+            planName: v.planName, type: v.type, area: v.area,
+            dept: v.dept || '', executor: v.executor,
+            scheduledDate: v.scheduledDate, remark: v.remark || '',
+            hazardType: v.hazardType || '',
+            /* ★ 2026-11-11 新增：隐患条数 / 隐患等级（看板口径的两个来源） */
+            hazardCount: Number(v.hazardCount) || 0,
+            hazardLevel: v.hazardLevel || '',
+            /* ★ 2026-11-11 新增：整改照片 / 整改日期（与隐患照片 photos 分开存） */
+            fixDate: v.fixDate || '',
+            fixPhotos: v.fixPhotos || [],
+            status: status,
+            photos: v.photos || [],
+            /* ★ 2026-11-12：必须显式写空数组。crud.update 是浅合并，
+               不写这个键，多部门单改回单部门后旧明细会残留并被继续统计 */
+            problems: []
+          };
+        }
+
         /* 状态联动字段理齐，避免展示自相矛盾：
            · 已完成：补完成时间；没有执行记录就落一条默认记录（现场情况可再补）
            · 离开「已完成」：清掉完成时间与执行记录
            · 离开「已改期」：清掉改期目标与原因（改期信息只对已改期状态有意义） */
         if (status === 'done') {
-          payload.completedAt = (isEdit && t.completedAt) || SD.utils.today();
-          if (!(isEdit && t.record)) {
-            payload.record = {
-              findings: '现场正常，无异常项', hazardCount: hz,
-              signedBy: payload.executor, signedAt: payload.completedAt
-            };
-          } else {
-            /* 已有执行记录时也不能让 record 里的镜像停在旧值（否则两处数字漂移） */
-            payload.record = Object.assign({}, t.record, { hazardCount: hz });
+          payload.completedAt = payload.completedAt || (isEdit && t.completedAt) || SD.utils.today();
+          if (!payload.record) {
+            if (!(isEdit && t.record)) {
+              payload.record = {
+                findings: '现场正常，无异常项', hazardCount: payload.hazardCount,
+                signedBy: payload.executor, signedAt: payload.completedAt
+              };
+            } else {
+              /* 已有执行记录时也不能让 record 里的镜像停在旧值（否则两处数字漂移） */
+              payload.record = Object.assign({}, t.record, { hazardCount: payload.hazardCount });
+            }
           }
         } else {
           payload.completedAt = null;
           payload.record = null;
           if (status !== 'rescheduled') { payload.rescheduleTo = null; payload.reason = ''; }
         }
+
         var req = isEdit
           ? SD.api.updateInspection(t.id, payload)
           : SD.api.createInspection(Object.assign({
               completedAt: null, rescheduleTo: null, reason: '',
-              fixDate: '', fixPhotos: []
+              fixDate: '', fixPhotos: [], problems: []
             }, payload));
         return req.then(function () {
           U.toast(isEdit ? '巡检任务已更新' : '巡检任务已新增', 'ok');
@@ -191,6 +384,7 @@ SD.views.inspection = (function () {
         });
       }
     });
+    return dlg;
   }
 
   /* ---------------- 删除巡检任务 ---------------- */
@@ -213,7 +407,11 @@ SD.views.inspection = (function () {
     /* ★ 2026-11-11：这里是**主路径**（列表「操作 ▾ → 标记完成」），
        隐患条数与等级必须都能在这里填 —— 只放在编辑表单里的话，
        实际使用中等级会长期是「未定级」，看板那张等级图等于白做。
-       条数初值取已有值（原来写死 0，重复标记完成会把填过的条数冲掉）。 */
+       条数初值取已有值（原来写死 0，重复标记完成会把填过的条数冲掉）。
+
+       ★ 2026-11-12：多部门单的条数/等级是**明细汇总**，这里不再给输入框 ——
+         若还渲染 #i_hz，onOk 里那句 parseInt 校验必然拿到空串报错，弹窗永远关不掉。 */
+    var isMulti = !!(t.problems && t.problems.length);
     var lvOpts = [{ v: '', n: '未定级' }].concat(SD.dict.DICT.severity).map(function (o) {
       return '<option value="' + U.esc(o.v) + '"' + (String(o.v) === String(t.hazardLevel || '') ? ' selected' : '') + '>' +
         U.esc(o.n) + '</option>';
@@ -225,9 +423,13 @@ SD.views.inspection = (function () {
       '<div class="grid-form">' +
         '<label class="field full"><span>现场情况 / 发现</span>' +
           '<textarea class="input" id="i_findings" rows="3" placeholder="例：消防通道畅通，灭火器材完好；发现 1 处通道被占用，已登记隐患">现场正常，无异常项</textarea></label>' +
-        '<label class="field"><span>隐患条数</span><input class="input" type="number" id="i_hz" min="0" step="1" value="' +
-          SD.metrics.hazardCountOf(t) + '"></label>' +
-        '<label class="field"><span>隐患等级</span><select class="input" id="i_hzlv">' + lvOpts + '</select></label>' +
+        (isMulti
+          ? '<label class="field full"><span>隐患条数</span><div>' +
+              SD.metrics.hazardCountOf(t) + ' 条 · ' + SD.metrics.hazardRowsOf(t).length +
+              ' 个部门（按明细汇总；要改条数请到「编辑」里改对应部门）</div></label>'
+          : '<label class="field"><span>隐患条数</span><input class="input" type="number" id="i_hz" min="0" step="1" value="' +
+              SD.metrics.hazardCountOf(t) + '"></label>' +
+            '<label class="field"><span>隐患等级</span><select class="input" id="i_hzlv">' + lvOpts + '</select></label>') +
         '<label class="field"><span>现场签字人</span><input class="input" id="i_by" value="' + U.esc(t.executor || '') + '"></label>' +
       '</div>';
 
@@ -235,14 +437,19 @@ SD.views.inspection = (function () {
       title: '标记完成 · 填写执行记录', width: 560, body: body, okText: '完成并保存记录',
       onOk: function (modal) {
         var g = function (id) { var e = modal.querySelector('#' + id); return e ? e.value.trim() : ''; };
-        var n = parseInt(g('i_hz'), 10);
-        if (isNaN(n) || n < 0) return '隐患条数请填非负整数';
-        return SD.api.completeInspection(t.id, {
+        var payload = {
           findings: g('i_findings') || '现场正常，无异常项',
-          hazardCount: n,
-          hazardLevel: g('i_hzlv'),
           signedBy: g('i_by')
-        }).then(function () {
+        };
+        if (!isMulti) {
+          var n = parseInt(g('i_hz'), 10);
+          if (isNaN(n) || n < 0) return '隐患条数请填非负整数';
+          payload.hazardCount = n;
+          payload.hazardLevel = g('i_hzlv');
+        }
+        /* 多部门时不传 hazardCount / hazardLevel：
+           dataSource 的 == null 守卫会保留既有值，明细才是真值 */
+        return SD.api.completeInspection(t.id, payload).then(function () {
           U.toast('巡检已完成，记录已保存', 'ok');
           ctx.reload();
         });
@@ -279,6 +486,35 @@ SD.views.inspection = (function () {
   /* ---------------- 查看执行记录 ---------------- */
   function openRecord(t) {
     var r = t.record || {};
+    var isMulti = !!(t.problems && t.problems.length);
+    var rows = SD.metrics.hazardRowsOf(t);
+
+    /* ★ 2026-11-12：多部门单的隐患明细（每条问题的部门 / 等级 / 条数 / 内容 / 整改）
+       老记录没有 problems，这里不渲染，保持原样 —— 现有断言与用户习惯都不受影响 */
+    var detailBlock = '';
+    if (isMulti) {
+      detailBlock = '<label class="field full"><span>分部门明细</span><div class="pr-detail">' +
+        rows.map(function (p, i) {
+          var fs = SD.metrics.rowFixStatusOf(p);
+          var fsTxt = fs === 'done' ? ('已整改' + (p.fixDate ? '（' + p.fixDate + '）' : ''))
+            : (fs === 'doing' ? '整改中' : '未整改');
+          return '<div class="pr-d-item">' +
+            '<div class="pr-d-head">' +
+              '<b>' + U.esc(p.dept || '未指定部门') + '</b>' +
+              '<span class="pr-d-tag">' + U.esc(p.level ? SD.dict.nameOf(SD.dict.DICT.severity, p.level) : '未定级') + '</span>' +
+              '<span class="pr-d-tag">' + p.count + ' 条</span>' +
+              '<span class="pr-d-tag ' + (fs === 'done' ? 'is-ok' : (fs === 'doing' ? 'is-warn' : '')) + '">' + U.esc(fsTxt) + '</span>' +
+              (p.photos.length ? '<button type="button" class="btn sm ghost js-pr-ph" data-i="' + i + '" data-k="p">' +
+                '照片 ' + p.photos.length + '</button>' : '') +
+              (p.fixPhotos.length ? '<button type="button" class="btn sm ghost js-pr-ph" data-i="' + i + '" data-k="f">' +
+                '整改照片 ' + p.fixPhotos.length + '</button>' : '') +
+            '</div>' +
+            (p.content ? '<div class="t-3 t-sm pr-d-text">' + U.esc(p.content) + '</div>' : '') +
+            (p.type ? '<div class="t-3 t-sm">隐患类型：' + U.esc(p.type) + '</div>' : '') +
+          '</div>';
+        }).join('') + '</div></label>';
+    }
+
     var body =
       '<div class="grid-form">' +
         '<label class="field full"><span>计划名称</span><div class="b">' + U.esc(t.planName) + '</div></label>' +
@@ -287,9 +523,13 @@ SD.views.inspection = (function () {
         '<label class="field"><span>执行人</span><div>' + U.esc(t.executor) + '</div></label>' +
         '<label class="field"><span>完成日期</span><div>' + U.esc(t.completedAt || '—') + '</div></label>' +
         '<label class="field full"><span>现场情况 / 发现</span><div>' + U.esc(r.findings || '—') + '</div></label>' +
-        '<label class="field"><span>隐患条数</span><div>' + SD.metrics.hazardCountOf(t) + ' 条</div></label>' +
-        '<label class="field"><span>隐患等级</span><div>' +
-          U.esc(t.hazardLevel ? SD.dict.nameOf(SD.dict.DICT.severity, t.hazardLevel) : '未定级') + '</div></label>' +
+        detailBlock +
+        (isMulti
+          ? '<label class="field"><span>隐患条数</span><div><b>' + SD.metrics.hazardCountOf(t) + ' 条</b> · ' +
+              rows.length + ' 个部门（按明细汇总）</div></label>'
+          : '<label class="field"><span>隐患条数</span><div>' + SD.metrics.hazardCountOf(t) + ' 条</div></label>' +
+            '<label class="field"><span>隐患等级</span><div>' +
+              U.esc(t.hazardLevel ? SD.dict.nameOf(SD.dict.DICT.severity, t.hazardLevel) : '未定级') + '</div></label>') +
         '<label class="field"><span>现场签字</span><div>' + U.esc(r.signedBy || '—') + '　' + U.esc(r.signedAt || '') + '</div></label>' +
         '<label class="field full"><span>隐患照片</span><div>' +
           (t.photos && t.photos.length
@@ -305,6 +545,17 @@ SD.views.inspection = (function () {
         '</div></label>' +
       '</div>';
     var recDlg = SD.comp.dialog.open({ title: '执行记录', width: 560, body: body, okText: '关闭' });
+    /* 分部门明细里逐行看照片（整改前 / 整改后各自一个入口） */
+    U.on(recDlg.el, 'click', '.js-pr-ph', function (e, el) {
+      var p = rows[Number(el.dataset.i)];
+      if (!p) return;
+      var ph = el.dataset.k === 'f' ? p.fixPhotos : p.photos;
+      if (ph && ph.length) {
+        SD.comp.lightbox.open(ph, 0, {
+          title: t.code + ' ' + (p.dept || '未指定部门') + (el.dataset.k === 'f' ? ' · 整改照片' : '')
+        });
+      }
+    });
     /* 弹窗内点「查看照片」→ 同样开大图 */
     U.on(recDlg.el, 'click', '.js-insp-ph', function (e, el) {
       var cur = SD.app.state.summary.inspections.filter(function (x) { return x.id === el.dataset.id; })[0] || t;
@@ -336,6 +587,16 @@ SD.views.inspection = (function () {
     return SD.comp.yearBar.yearOfRecord(t, YEAR_FIELDS, cur) === y;
   }
 
+  /** 搜索串：把分部门明细里的部门 / 问题内容 / 类型一并并入，
+      否则「一单三个部门」时搜第二个部门名搜不出来，等于白登记 */
+  function searchTextOf(t) {
+    var s = [t.planName, t.code, t.area, t.dept, t.executor, t.type, t.hazardType].join(' ');
+    SD.metrics.hazardRowsOf(t).forEach(function (r) {
+      s += ' ' + (r.dept || '') + ' ' + (r.content || '') + ' ' + (r.type || '');
+    });
+    return s.toLowerCase();
+  }
+
   function applyFilter(s, f, sort) {
     var list = s.inspections.slice();
 
@@ -351,10 +612,7 @@ SD.views.inspection = (function () {
     }
     if (f.q) {
       var q = String(f.q).toLowerCase();
-      list = list.filter(function (t) {
-        return (t.planName + ' ' + t.code + ' ' + t.area + ' ' + t.dept + ' ' + t.executor + ' ' + t.type)
-          .toLowerCase().indexOf(q) >= 0;
-      });
+      list = list.filter(function (t) { return searchTextOf(t).indexOf(q) >= 0; });
     }
 
     var key = (sort && sort.key) || 'scheduledDate';
@@ -518,15 +776,33 @@ SD.views.inspection = (function () {
       {
         key: 'area', title: '区域',
         render: function (r) {
-          var n = (r.photos || []).length;
+          /* ★ 2026-11-12：多部门单的照片分散在各行，角标取「整单照片」，
+             另加一个「N 个部门」提示 —— 否则一行写着「照片 3」，打开大图却看不出是哪两个部门的 */
+          var n = SD.metrics.problemPhotosOf(r).length;
+          var dN = SD.metrics.hazardRowsOf(r).length;
           return '<div class="cell-main js-insp-area' + (n ? ' link' : '') + '" data-id="' + r.id + '" ' +
               'title="' + (n ? '点击查看隐患照片（' + n + ' 张）' : '这条巡检还没有隐患照片') + '">' +
             U.esc(r.area || '—') +
             (n ? '<span class="hz-photo-tag">照片 ' + n + '</span>' : '') +
+            (dN > 1 ? '<span class="hz-photo-tag">' + dN + ' 个部门</span>' : '') +
           '</div>';
         }
       },
-      { key: 'dept', title: '部门', sortable: true, render: function (r) { return U.esc(r.dept || '—'); } },
+      {
+        key: 'dept', title: '部门', sortable: true,
+        render: function (r) {
+          var ds = [];
+          SD.metrics.hazardRowsOf(r).forEach(function (p) {
+            var d = String(p.dept || '').trim();
+            if (d && ds.indexOf(d) < 0) ds.push(d);
+          });
+          if (ds.length > 1) {
+            return '<span title="' + U.esc(ds.join(' / ')) + '">' +
+              U.esc(ds[0]) + ' 等 ' + ds.length + ' 个部门</span>';
+          }
+          return U.esc(r.dept || ds[0] || '—');
+        }
+      },
       { key: 'executor', title: '执行人', sortable: true, render: function (r) { return U.esc(r.executor || '—'); } },
       {
         key: 'scheduledDate', title: '计划日期', sortable: true,
@@ -597,7 +873,7 @@ SD.views.inspection = (function () {
     U.on(table, 'click', '.js-insp-area', function (e, el) {
       var cur = SD.app.state.summary.inspections.filter(function (x) { return x.id === el.dataset.id; })[0];
       if (!cur) return;
-      var ph = cur.photos || [];
+      var ph = SD.metrics.problemPhotosOf(cur);
       if (!ph.length) { U.toast('这条巡检还没有隐患照片，新增 / 编辑巡检时可添加'); return; }
       SD.comp.lightbox.open(ph, 0, { title: cur.code + ' ' + cur.area });
     });
@@ -615,7 +891,11 @@ SD.views.inspection = (function () {
       '列表支持关键词搜索与点表头排序。<br>' +
       '<b class="t-2">照片与整改</b>　「隐患照片」是整改前的问题现场，「整改照片」是整改后的结果，两者分开存、各自最多 18 张；' +
       '看板「隐患照片 / 各部门隐患照片」只统计前者，整改照片不计入，避免同一件事被数两遍。' +
-      '「整改日期」记整改完成的那天，与「计划日期」相互独立。</section>'
+      '「整改日期」记整改完成的那天，与「计划日期」相互独立。<br>' +
+      '<b class="t-2">分部门登记</b>　一趟巡检走了几个部门、各有各的问题时，点表单里的「按部门拆分」，' +
+      '每个部门一行（部门 / 问题内容 / 等级 / 条数 / 照片 / 整改）。一张单仍是<b>一条</b>记录、一个编号；' +
+      '看板按明细行汇总：<b>各部门相加恒等于整单</b>。只涉及一个部门时不用拆分，照常填「隐患条数 / 照片」即可。' +
+      '</section>'
     ));
   }
 

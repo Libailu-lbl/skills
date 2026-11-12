@@ -35,7 +35,7 @@ SD.views.dashboard = (function () {
 
   function render(host, ctx) {
     var s = ctx.summary;
-    var ip = s.inspectionPhotos || { totalPhotos: 0, totalTasks: 0, byDept: [], trend: { months: [], depts: [] } };
+    var ip = s.inspectionPhotos || { totalPhotos: 0, totalTasks: 0, totalRecords: 0, byDept: [], trend: { months: [], depts: [] } };
     U.clear(host);
 
     /* ---------- 顶部关键数字 ----------
@@ -44,7 +44,9 @@ SD.views.dashboard = (function () {
     var kpi = U.h('<div class="grid cols-4"></div>');
     SD.comp.statCard.renderAll(kpi, [
       { label: '隐患照片', value: ip.totalPhotos, unit: '张', icon: 'inspection', tone: '',
-        foot: ip.totalTasks ? ip.totalTasks + ' 项巡检任务上传' : '暂无巡检上传照片' },
+        /* ★ 2026-11-12：一单多部门时「项」是上报处数、不是任务数，
+           所以脚注用 totalRecords（记录数），两者不等时才看得出来 */
+        foot: ip.totalRecords ? ip.totalRecords + ' 项巡检任务上传' : '暂无巡检上传照片' },
       { label: '已闭环', value: s.closedCount, unit: '条', icon: 'check', tone: 'green',
         bar: { pct: s.totalHazards ? s.closedCount / s.totalHazards : 0, cls: 'green' },
         foot: U.pct(s.totalHazards ? s.closedCount / s.totalHazards : 0, 1, 0) + ' 闭环率（台账）' },
@@ -67,7 +69,7 @@ SD.views.dashboard = (function () {
          ③ 空态文案不能复用「暂无隐患照片」（那是照片口径的），这里用「暂无巡检隐患数据」。 */
     var st = s.inspectionStats || {
       records: 0, byStatus: { cancelled: 0 }, hazardCount: 0, hazardTasks: 0,
-      byLevel: [], fix: { none: 0, doing: 0, done: 0 }, fixRate: null
+      byLevel: [], byDept: [], fix: { none: 0, doing: 0, done: 0 }, fixRate: null
     };
     var cand = (st.byStatus && st.byStatus.cancelled) || 0;
     var inspCard = U.h(
@@ -101,6 +103,21 @@ SD.views.dashboard = (function () {
     } else {
       fixBox.innerHTML = '未整改 <b class="t-2">' + st.fix.none + '</b> 条 · 整改中 <b class="t-2">' + st.fix.doing +
         '</b> 条 · 已整改 <b class="t-2">' + st.fix.done + '</b> 条（共 ' + st.hazardCount + ' 条）';
+    }
+
+    /* ★ 2026-11-12：分部门隐患条数
+       一张巡检单可以登记多个部门的问题，这里把各部门条数摊开写一行 ——
+       否则「隐患条数 N 条」在页面上是个黑盒，用户没法核对它是怎么来的。
+       刻意用纯文本：不用 .bar-row（那条断言锁的是「各部门隐患照片」卡里的行数），
+       也不进 .rpt-kv（否则空态「4 格」断言与版式都会被带偏）。 */
+    if (st.hazardCount && st.byDept && st.byDept.length) {
+      var dParts = st.byDept.slice(0, 5).map(function (d) {
+        return U.esc(d.dept) + ' <b class="t-2">' + d.hazardCount + '</b> 条';
+      });
+      var dMore = st.byDept.length > 5 ? '　等 ' + st.byDept.length + ' 个部门' : '';
+      var deptBox = U.h('<div class="t-3 t-sm js-insp-dept" style="margin-top:6px">' +
+        '<b class="t-2">分部门隐患条数</b>　' + dParts.join(' · ') + dMore + '</div>');
+      fixBox.parentNode.appendChild(deptBox);
     }
 
     /* 巡检隐患等级（按条数）——与下方「隐患等级分布（台账）」并列但不同源，
@@ -248,7 +265,11 @@ SD.views.dashboard = (function () {
         SD.comp.state.build('empty', { title: '暂无隐患照片', desc: '巡检任务上传照片后，按部门汇总会显示在这里。' }));
     } else {
       var maxPhotos = ip.byDept.reduce(function (a, d) { return Math.max(a, d.photos); }, 0) || 1;
-      photoCard.querySelector('.js-total').textContent = '合计 ' + ip.totalPhotos + ' 张 / ' + ip.totalTasks + ' 项任务';
+      /* ★ 2026-11-12：多部门单的「项」是上报处数（= 有照片的明细行），
+         与「任务」不再是一回事。只在两者不等时补一句，避免文案误导；
+         单部门数据（含全部历史记录）仍是「合计 7 张 / 4 项任务」，一字未变。 */
+      photoCard.querySelector('.js-total').textContent = '合计 ' + ip.totalPhotos + ' 张 / ' + ip.totalTasks + ' 项' +
+        (ip.totalRecords != null && ip.totalRecords !== ip.totalTasks ? '（共 ' + ip.totalRecords + ' 项任务）' : '任务');
       photoCard.querySelector('.js-body').innerHTML = SD.comp.chart.bars({
         /* neutral：照片张数是「数量」不是「比率」，少的部门不代表差，
            不能沿用整改率的红橙语义色 */
@@ -348,10 +369,11 @@ SD.views.dashboard = (function () {
       '<div><b class="t-2">口径说明</b></div>' +
       '<div style="margin-top:4px"><b>一、隐患照片（主口径）</b>　统计「安全巡检 → 新增巡检任务」里上传的' +
       '<b>隐患照片张数</b>（字段原名「巡查照片」，2026-11-10 更名，存储键不变，历史记录照常计数）。' +
-      '部门归属取巡检任务的「责任部门」，未填的归「未指定部门」，因此<b>各部门相加恒等于总张数</b>；' +
+      '部门归属取巡检任务的「责任部门」（★ 2026-11-12 起：一张单可拆多部门，改按<b>明细行</b>的部门归属），' +
+      '未填的归「未指定部门」，因此<b>各部门相加恒等于总张数</b>；' +
       '按巡检<b>计划日期</b>归月；任务改期或取消时，已上传的照片仍然计入（照片是现场证据，不随任务状态消失）。<br>' +
-      '<b>隐患类型分布</b>同属巡检口径，但计的是<b>次数</b>：一条有照片的巡检记一次（含未分类），' +
-      '所以类型合计 = 有隐患照片的任务数，不等于照片张数 —— 照片是证据，任务是事件。</div>' +
+      '<b>隐患类型分布</b>同属巡检口径，但计的是<b>次数</b>：一处有照片的隐患记一次（按明细行；老记录 = 该任务，含未分类），' +
+      '所以类型合计 = 有隐患照片的上报处数，不等于照片张数 —— 照片是证据，一次上报是一个事件。</div>' +
       '<div style="margin-top:4px"><b>二、隐患台账（状态口径）</b>　隐患趋势（新增 / 闭环）、闭环率、逾期未闭环、' +
       '延期跟进、各部门整改率均基于隐患台账条数 —— 这些指标依赖「整改期限 + 状态机 + 闭环时间」，' +
       '巡检侧没有这套流转，算不出闭环与逾期，所以必须留在台账口径。' +
@@ -361,8 +383,13 @@ SD.views.dashboard = (function () {
       '<b>不是照片张数、也不是任务数</b>；部门归属同样未填归「未指定部门」，因此<b>各单位条数相加恒等于总条数</b>。' +
       '整改状态由证据推导、不另设字段：<b>有「整改日期」= 已整改</b>；<b>只有「整改照片」= 整改中</b>；两者都没有 = 未整改。' +
       '<b>整改率 = 已整改条数 / 隐患条数</b>（按条不按任务，才不会出现「隐患 5 条、已整改 4 条、整改率 50%」）。' +
-      '「巡检隐患等级」按<b>条数</b>汇总：一条任务只填一个等级，其全部条数计入该等级，未填归「未定级」，' +
-      '因此等级合计 = 隐患条数。<b>巡检隐患不会自动生成隐患台账记录</b>，所以本段的「隐患条数」' +
+      '「巡检隐患等级」按<b>条数</b>汇总：一张单可按部门拆成多行，<b>每行一个等级</b>、逐行计入，未填归「未定级」，' +
+      '因此等级合计 = 隐患条数。<br>' +
+      '<b>一单多部门（2026-11-12）</b>：表单里点「按部门拆分」即可在一张巡检单下按部门登记多条问题，' +
+      '条数 / 等级 / 照片 / 整改都按明细行归属，看板再按部门汇总 —— 所以「分部门隐患条数」' +
+      '与「各部门隐患照片」能把同一张单拆到不同部门，而「巡检记录 N 项」仍是单据数，不会被拆成多张。' +
+      '老记录没有明细，自动视为<b>一行</b>，历史数字一个不变。' +
+      '<b>巡检隐患不会自动生成隐患台账记录</b>，所以本段的「隐患条数」' +
       '与台账口径的「已闭环 / 逾期 / 整改率」是两本账，不互相折算。</div>' +
       '<div style="margin-top:4px">三条口径（张数 / 条数 / 台账条数）在页面各段标题里已分别注明，不混算。</div>' +
       '</section>'

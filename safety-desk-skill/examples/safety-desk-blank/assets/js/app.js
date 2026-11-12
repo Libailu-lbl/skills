@@ -288,11 +288,21 @@ SD.app = (function () {
     if (item.kind === 'inspection') {
       var t = findById(state.data.inspections, item.ref.id);
       if (!t) return U.toast('任务不存在', 'err');
+      /* ★ 2026-11-12：这里原来传 hazardCount: 0，会把用户填过的条数**清零**（数据损坏级）。
+         completeInspection 在没传条数时会退回原值，所以直接不传即可。
+         多部门单的「现场情况」按明细合成，避免一键完成把已有描述盖成「无异常项」。 */
+      var findings = '现场正常，无异常项';
+      if (t.problems && t.problems.length) {
+        var parts = t.problems.filter(function (p) { return p.content; }).map(function (p) {
+          return (p.dept ? p.dept + '：' : '') + p.content;
+        });
+        if (parts.length) findings = parts.join('；');
+      }
       t.status = 'done';
       t.completedAt = s.today;
-      t.record = { findings: '现场正常，无异常项', signedBy: t.executor, signedAt: s.today };
+      t.record = Object.assign({}, t.record, { findings: findings, signedBy: t.executor, signedAt: s.today });
       applyLocal();
-      SD.api.completeInspection(t.id, { findings: '现场正常，无异常项', hazardCount: 0, signedBy: t.executor })
+      SD.api.completeInspection(t.id, { findings: findings, signedBy: t.executor })
         .then(function () { U.toast('巡检已标记完成', 'ok'); reload(); }, function (e) { rollback(e && e.message); });
       return;
     }

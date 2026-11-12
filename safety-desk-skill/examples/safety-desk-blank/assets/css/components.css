@@ -1260,3 +1260,41 @@ table.usg .usg-when{ width:112px; color:var(--text-3); white-space:nowrap; }
 .gear-item.is-locked .gi-hint{ color:var(--brand-strong); }
 .gear-item.is-locked:hover{ background:var(--brand-soft); color:var(--brand-strong); }
 .gear-item.is-locked:hover .gi-ico{ color:var(--brand-strong); }
+
+/* ---------------- 分部门问题明细（巡检单 · ★ 2026-11-12）----------------
+   一张巡检单可登记多个部门各自的问题，每行是一张小卡片。
+   行内复用 .grid-form，所以 ≤640px 自动单列堆叠，不用另写响应式。 */
+.pr-wrap{
+  border:1px solid var(--line); border-radius:10px;
+  padding:12px; margin:0 0 12px; background:var(--surface-2);
+}
+.pr-head{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+.pr-title{ font-size:13px; color:var(--text); }
+.pr-spacer{ flex:1 1 auto; }
+.pr-rows{ display:flex; flex-direction:column; gap:10px; }
+.pr-row{
+  border:1px solid var(--line); border-radius:9px;
+  padding:10px 12px 2px; background:var(--surface);
+}
+.pr-row-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.pr-idx{ font-size:12px; font-weight:600; color:var(--text-2); }
+.pr-row .pr-del{ color:var(--danger); border-color:var(--line); }
+.pr-row .pr-del[data-armed="1"]{ color:#fff; background:var(--danger); border-color:var(--danger); }
+@media (max-width:640px){
+  .pr-wrap{ padding:10px; }
+  .pr-row{ padding:8px 10px 0; }
+}
+
+/* 「按部门拆分」入口（单部门模式下的那一行说明 + 按钮） */
+.pr-splitbar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+/* 执行记录弹窗里的分部门明细：每条问题一块，左边一条竖线当引线 */
+.pr-detail{ display:flex; flex-direction:column; gap:8px; }
+.pr-d-item{ border-left:2px solid var(--brand-soft); padding:2px 0 2px 9px; }
+.pr-d-head{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.pr-d-tag{
+  font-size:11px; padding:1px 6px; border-radius:999px;
+  background:var(--surface-2); color:var(--text-2);
+}
+.pr-d-tag.is-ok{ background:#e7f6ef; color:#12805c; }
+.pr-d-tag.is-warn{ background:var(--warn-bg); color:#8a4b16; }
+.pr-d-text{ margin-top:2px; }

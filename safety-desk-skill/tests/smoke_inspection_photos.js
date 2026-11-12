@@ -525,6 +525,221 @@ function ok(name, cond, extra) {
   if (cpCancel) cpCancel.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
   await wait(200);
 
+  /* ================= 14. 一单多部门（★ 2026-11-12）=================
+     目标：一张巡检单能按部门登记多条问题，看板按部门汇总且账能对上；
+           老记录（无 problems）走「一行合成行」，数字一个都不变。 */
+  console.log('== 14. 一张巡检单记录多个部门 ==');
+
+  const click2 = el => el && el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  const setV = (el, v) => {
+    if (!el) return;
+    el.value = v;
+    el.dispatchEvent(new win.Event('input', { bubbles: true }));
+  };
+
+  data().inspections = [{
+    id: 'M0', code: 'FZXJ-2026-301', planName: '多部门巡检', type: '日常巡检', area: 'A 区',
+    dept: '生产一部', executor: '测试员', scheduledDate: d10, status: 'planned',
+    photos: [], hazardCount: 2, hazardLevel: 'large', hazardType: '消防',
+    fixDate: '', fixPhotos: [], record: null
+  }];
+  SD.store.save();
+  await SD.app.reload();
+  await go('inspection');
+  await wait(400);
+
+  click2(view().querySelector('[data-act="iops"]'));
+  await wait(300);
+  click2(Array.from(doc.querySelectorAll('.dd-item')).find(x => x.textContent.trim() === '编辑'));
+  await wait(500);
+
+  let fm = Array.from(doc.querySelectorAll('.mask .modal')).pop();
+  ok('默认仍是单部门模式（没有明细行）', !!fm && fm.querySelectorAll('.pr-row').length === 0);
+  ok('表单有「按部门拆分」入口', !!fm && !!fm.querySelector('.js-split'));
+  ok('单部门路径不变：隐患条数输入框仍在', !!fm && !!fm.querySelector('#ff_hazardCount'));
+
+  click2(fm.querySelector('.js-split'));
+  await wait(300);
+
+  ok('拆分后出现 1 行明细', !!fm && fm.querySelectorAll('.pr-row').length === 1,
+    fm && fm.querySelectorAll('.pr-row').length);
+  ok('第 1 行继承原条数 2',
+    (fm.querySelector('.pr-row [data-role="count"]') || {}).value === '2',
+    (fm.querySelector('.pr-row [data-role="count"]') || {}).value);
+  const hiddenAll = ['dept', 'hazardType', 'hazardCount', 'hazardLevel', 'photos', 'fixDate', 'fixPhotos']
+    .every(k => {
+      const el = fm.querySelector('#ff_' + k);
+      const f = el && el.closest('.field');
+      return f && f.style.display === 'none';
+    });
+  ok('7 个标量字段整块隐藏（避免两套入口打架）', hiddenAll);
+  ok('行内没有 ff_ 前缀 id（防主表单串值）', fm.querySelectorAll('.pr-row [id^="ff_"]').length === 0,
+    fm.querySelectorAll('.pr-row [id^="ff_"]').length);
+  ok('行内两个照片位、上限 18 张', fm.querySelectorAll('.pr-row .ph-slot[data-max="18"]').length === 2,
+    fm.querySelectorAll('.pr-row .ph-slot[data-max="18"]').length);
+
+  click2(fm.querySelector('[data-act="add"]'));
+  await wait(150);
+  click2(fm.querySelector('[data-act="add"]'));
+  await wait(200);
+  ok('可继续加行（共 3 个部门）', fm.querySelectorAll('.pr-row').length === 3,
+    fm.querySelectorAll('.pr-row').length);
+
+  const rowsEl = () => Array.from(fm.querySelectorAll('.pr-row'));
+  const fillRow = (i, o) => {
+    const r = rowsEl()[i];
+    if (!r) return;
+    if (o.dept != null) setV(r.querySelector('[data-role="dept"]'), o.dept);
+    if (o.count != null) setV(r.querySelector('[data-role="count"]'), String(o.count));
+    if (o.level != null) r.querySelector('[data-role="level"]').value = o.level;
+    if (o.type != null) r.querySelector('[data-role="type"]').value = o.type;
+    if (o.content != null) setV(r.querySelector('[data-role="content"]'), o.content);
+    if (o.fixDate != null) r.querySelector('[data-role="fixDate"]').value = o.fixDate;
+    if (o.photos) r.querySelector('[data-role="photos"]')._ph.set(shot(o.photos));
+    if (o.fixPhotos) r.querySelector('[data-role="fixPhotos"]')._ph.set(shot(o.fixPhotos));
+  };
+
+  fillRow(0, { dept: '生产一部', count: 2, level: 'large', type: '消防', content: '通道被占用', photos: 2, fixDate: d10 });
+  fillRow(1, { dept: '仓储部', count: 3, level: 'major', type: '电气', content: '配电箱门未关', photos: 1, fixPhotos: 1 });
+  fillRow(2, { dept: '质检部', count: 1, level: '', type: '', content: '照明不足', photos: 0 });
+  await wait(250);
+  ok('明细汇总行按行累计（3 个部门 · 6 条）',
+    /3 个部门 · 6 条/.test(fm.querySelector('.pr-sum').textContent),
+    fm.querySelector('.pr-sum').textContent);
+
+  click2(fm.querySelector('.js-ok'));
+  await wait(1300);
+
+  const m1 = data().inspections.filter(t => t.id === 'M0')[0] || {};
+  ok('明细已落库（3 条问题行）', Array.isArray(m1.problems) && m1.problems.length === 3,
+    m1.problems && m1.problems.length);
+  ok('顶层条数是明细汇总 2+3+1=6', m1.hazardCount === 6, m1.hazardCount);
+  ok('顶层部门取第一个非空', m1.dept === '生产一部', m1.dept);
+  ok('顶层等级取最高（重大）', m1.hazardLevel === 'major', m1.hazardLevel);
+  ok('顶层照片是各行拼接（2+1）', (m1.photos || []).length === 3, (m1.photos || []).length);
+  ok('各行照片各存各的',
+    (m1.problems[0].photos || []).length === 2 && (m1.problems[1].photos || []).length === 1);
+
+  const st2 = SD.app.state.summary.inspectionStats;
+  ok('隐患条数 = Σ 行 = 6', st2.hazardCount === 6, st2.hazardCount);
+  ok('hazardCountOf 与明细一致', SD.metrics.hazardCountOf(m1) === 6);
+  const deptMap = {};
+  st2.byDept.forEach(d => { deptMap[d.dept] = d.hazardCount; });
+  ok('按部门拆开：生产一部 2 / 仓储部 3 / 质检部 1',
+    deptMap['生产一部'] === 2 && deptMap['仓储部'] === 3 && deptMap['质检部'] === 1,
+    JSON.stringify(deptMap));
+  ok('各部门相加 = 隐患条数',
+    st2.byDept.reduce((a, d) => a + d.hazardCount, 0) === st2.hazardCount);
+  ok('等级按行汇总：重大 3 / 较大 2 / 未定级 1',
+    st2.byLevel.map(x => x.name + x.count).join(',') === '重大3,较大2,未定级1',
+    st2.byLevel.map(x => x.name + x.count).join(','));
+  ok('整改三态按行累计且和为 6',
+    st2.fix.done === 2 && st2.fix.doing === 3 && st2.fix.none === 1 &&
+    st2.fix.done + st2.fix.doing + st2.fix.none === 6,
+    JSON.stringify(st2.fix));
+  ok('整改率 = 2/6 ≈ 33%', Math.round(st2.fixRate * 100) === 33, st2.fixRate);
+  ok('一张单仍算 1 个任务（hazardTasks）', st2.hazardTasks === 1, st2.hazardTasks);
+
+  const ip2 = SD.app.state.summary.inspectionPhotos;
+  ok('照片按部门拆：总 3 张', ip2.totalPhotos === 3, ip2.totalPhotos);
+  const phMap = {};
+  ip2.byDept.forEach(d => { phMap[d.dept] = d.photos; });
+  ok('照片归属：生产一部 2 / 仓储部 1',
+    phMap['生产一部'] === 2 && phMap['仓储部'] === 1, JSON.stringify(phMap));
+  ok('镜像守恒：Σ t.photos === totalPhotos',
+    data().inspections.reduce((a, t) => a + (t.photos || []).length, 0) === ip2.totalPhotos);
+  ok('类型合计 = 上报处数（环图中心与图例对得上）',
+    ip2.byType.reduce((a, x) => a + x.tasks, 0) === ip2.totalTasks, ip2.totalTasks);
+  ok('处数 2 ≠ 任务数 1（一单两个部门各带照片）',
+    ip2.totalTasks === 2 && ip2.totalRecords === 1,
+    ip2.totalTasks + '/' + ip2.totalRecords);
+
+  /* ---- 看板：分部门条数 ---- */
+  await go('dashboard');
+  await wait(500);
+  const dBox = view().querySelector('.js-insp-dept');
+  ok('看板出现「分部门隐患条数」', !!dBox && /分部门隐患条数/.test(dBox.textContent),
+    dBox && dBox.textContent.slice(0, 70));
+  ok('看板按部门列出条数', !!dBox && /仓储部\s*3\s*条/.test(dBox.textContent),
+    dBox && dBox.textContent);
+  ok('顶部 KPI 仍正好 4 张', view().querySelectorAll('.grid.cols-4 > *').length === 4,
+    view().querySelectorAll('.grid.cols-4 > *').length);
+  const photoCard2 = Array.from(view().querySelectorAll('.card'))
+    .find(c => ((c.querySelector('h3') || {}).textContent || '').trim() === '各部门隐患照片');
+  ok('合计文案区分「处」与「任务」',
+    !!photoCard2 && /合计 3 张 \/ 2 项（共 1 项任务）/.test(photoCard2.textContent),
+    photoCard2 && photoCard2.querySelector('.js-total').textContent);
+
+  /* ---- 列表：部门列与搜索 ---- */
+  await go('inspection');
+  await wait(500);
+  ok('列表部门列写明「等 3 个部门」', /等 3 个部门/.test(view().textContent));
+  const qBox = view().querySelector('input[data-keep-focus="insp"]');
+  setV(qBox, '质检部');
+  await wait(600);
+  ok('搜第三个部门名能命中这张单',
+    view().querySelectorAll('.js-list-box table tbody tr').length === 1,
+    view().querySelectorAll('.js-list-box table tbody tr').length);
+  setV(qBox, '');
+  await wait(600);
+
+  /* ---- 标记完成：不覆盖明细汇总 ---- */
+  click2(view().querySelector('[data-act="iops"]'));
+  await wait(300);
+  click2(Array.from(doc.querySelectorAll('.dd-item')).find(x => /标记完成/.test(x.textContent)));
+  await wait(500);
+  const cm2 = Array.from(doc.querySelectorAll('.mask .modal')).pop();
+  ok('多部门单的「标记完成」不再给条数输入框', !!cm2 && !cm2.querySelector('#i_hz'));
+  ok('改为只读摘要（按明细汇总）', !!cm2 && /按明细汇总/.test(cm2.textContent),
+    cm2 && cm2.textContent.slice(0, 80));
+  click2(cm2 && cm2.querySelector('.js-ok'));
+  await wait(1300);
+  const m1b = data().inspections.filter(t => t.id === 'M0')[0] || {};
+  ok('标记完成没改写条数（仍 6）', m1b.hazardCount === 6, m1b.hazardCount);
+  ok('标记完成没清掉等级（仍 major）', m1b.hazardLevel === 'major', m1b.hazardLevel);
+
+  /* ---- 执行记录：分部门明细 ---- */
+  click2(view().querySelector('[data-act="iops"]'));
+  await wait(300);
+  click2(Array.from(doc.querySelectorAll('.dd-item')).find(x => /执行记录/.test(x.textContent)));
+  await wait(500);
+  const rm = Array.from(doc.querySelectorAll('.mask .modal')).pop();
+  const rmText = rm ? rm.textContent : '';
+  ok('执行记录有「分部门明细」', /分部门明细/.test(rmText));
+  ok('明细列出三个部门',
+    /生产一部/.test(rmText) && /仓储部/.test(rmText) && /质检部/.test(rmText));
+  ok('明细行显示条数与整改状态',
+    /2 条/.test(rmText) && /已整改/.test(rmText) && /整改中/.test(rmText));
+  click2(rm && Array.from(rm.querySelectorAll('.btn')).find(b => /关闭/.test(b.textContent)));
+  await wait(250);
+
+  /* ---- 老记录：单部门路径与数字都不变 ---- */
+  data().inspections = [{
+    id: 'L0', code: 'FZXJ-2026-302', planName: '老记录', type: '日常巡检', area: 'B 区',
+    dept: '', executor: '测试员', scheduledDate: d10, status: 'planned',
+    photos: [], hazardCount: 4, hazardLevel: '',
+    record: { findings: '旧', hazardCount: 4, signedBy: 'x', signedAt: d10 }
+  }];
+  SD.store.save();
+  await SD.app.reload();
+  await go('inspection');
+  await wait(500);
+  click2(view().querySelector('[data-act="iops"]'));
+  await wait(300);
+  click2(Array.from(doc.querySelectorAll('.dd-item')).find(x => x.textContent.trim() === '编辑'));
+  await wait(500);
+  const lm = Array.from(doc.querySelectorAll('.mask .modal')).pop();
+  ok('老记录打开仍是单部门表单（无明细行）', !!lm && lm.querySelectorAll('.pr-row').length === 0);
+  ok('老记录条数不被读成 0', !!lm && (lm.querySelector('#ff_hazardCount') || {}).value === '4',
+    lm && (lm.querySelector('#ff_hazardCount') || {}).value);
+  click2(lm && lm.querySelector('.js-ok'));
+  await wait(1100);
+  const l0 = data().inspections.filter(t => t.id === 'L0')[0] || {};
+  ok('老记录保存后条数仍是 4', l0.hazardCount === 4, l0.hazardCount);
+  ok('老记录保存后 problems 显式为 []',
+    Array.isArray(l0.problems) && l0.problems.length === 0,
+    JSON.stringify(l0.problems).slice(0, 40));
+
   ok('全程无 JS 报错', errors.length === 0, errors.join(' | ').slice(0, 200));
 
   console.log('\n结果：通过 ' + pass + ' / 失败 ' + fail);
