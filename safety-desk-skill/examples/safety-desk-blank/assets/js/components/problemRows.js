@@ -26,7 +26,7 @@
 
    用法：
      var ed = SD.comp.problemRows.mount(host, { value: t.problems, depts: [...] });
-     ed.get()       // → [{id, dept, content, type, level, count, photos, fixDate, fixPhotos}]
+     ed.get()       // → [{id, dept, content, type, level, count, photos, fixDueDate, fixDate, fixPhotos}]
      ed.validate()  // → '第 2 行：…' 或 null
      ed.set(list)   // 整体替换（打开编辑时用）
    ========================================================= */
@@ -80,6 +80,8 @@ SD.comp.problemRows = (function () {
         '<label class="field full"><span>问题内容</span>' +
           '<textarea class="input" rows="2" data-role="content" ' +
           'placeholder="例：配电箱门无法闭合，线路外露">' + esc(v.content) + '</textarea></label>' +
+        '<label class="field"><span>整改期限</span>' +
+          '<input class="input" type="date" data-role="fixDue" value="' + esc(v.fixDueDate) + '"></label>' +
         '<label class="field"><span>整改日期</span>' +
           '<input class="input" type="date" data-role="fixDate" value="' + esc(v.fixDate) + '"></label>' +
         '<div class="field full"><span>隐患照片</span>' +
@@ -134,6 +136,8 @@ SD.comp.problemRows = (function () {
           level: q('level').value || '',
           count: Math.max(0, Math.floor(Number(countEl.value) || 0)),
           photos: r.ph.get(),
+          /* ★ 2026-11-12：键名必须与 metrics.normRow 一致，否则期限存进去读不出来 */
+          fixDueDate: q('fixDue').value || '',
           fixDate: q('fixDate').value || '',
           fixPhotos: r.fixPh.get()
         };

@@ -177,9 +177,17 @@ function ok(name, cond, extra) {
   const cards = Array.from(view().querySelectorAll('.grid.cols-4 > *'));
   ok('顶部 4 张关键数字', cards.length === 4, cards.length);
   const k1 = cards[0] ? cards[0].textContent.replace(/\s+/g, ' ') : '';
-  ok('第一张卡是「隐患照片」', /隐患照片/.test(k1), k1.slice(0, 50));
-  ok('第一张卡的值是 7 张', /\b7\b/.test(k1) && /张/.test(k1), k1.slice(0, 50));
+  ok('第一张卡是「隐患条数」（KPI 全巡检化）', /隐患条数/.test(k1), k1.slice(0, 50));
+  /* ★ 2026-11-12：KPI 从「照片张数」改为「隐患条数」。本组种子只有照片、没填条数，
+     所以这里本来就该是 0 条 —— 旧断言查「7 张」属于已作废的照片口径（9 条的断言见 13.3）。 */
+  ok('第一张卡的值 = 0 条（本组未填条数）', /0\s*条/.test(k1) && !/张/.test(k1), k1.slice(0, 50));
   ok('第一张卡不再叫「隐患总数」', !/隐患总数/.test(k1));
+  const kAll = cards.map(c => c.textContent.replace(/\s+/g, ' '));
+  ok('后三张是「已整改 / 逾期未整改 / 整改率」',
+    /已整改/.test(kAll[1]) && /逾期未整改/.test(kAll[2]) && /整改率/.test(kAll[3]),
+    kAll.slice(1).map(t => t.slice(0, 12)).join(' | '));
+  ok('KPI 不再统计隐患台账（无「已闭环 / 延期跟进」）',
+    !/已闭环/.test(kAll.join(' ')) && !/延期跟进/.test(kAll.join(' ')));
 
   const photoCard = Array.from(view().querySelectorAll('.card'))
     .find(c => {
@@ -451,18 +459,38 @@ function ok(name, cond, extra) {
     .find(c => (c.querySelector('h3') || {}).textContent.trim() === '安全巡检（隐患与整改）');
   ok('看板有「安全巡检（隐患与整改）」段', !!inspSec);
   const inspTxt = inspSec ? inspSec.textContent.replace(/\s+/g, ' ') : '';
-  ok('段内「巡检记录」= 4 项', /巡检记录\s*4\s*项/.test(inspTxt), inspTxt.slice(0, 80));
-  ok('段内「隐患条数」= 9 条', /隐患条数\s*9\s*条/.test(inspTxt));
-  ok('段内「已整改」= 3 条', /已整改\s*3\s*条/.test(inspTxt));
-  ok('段内「整改率」= 33%', /整改率\s*33%/.test(inspTxt), inspTxt.slice(0, 120));
-  ok('段内写明三态明细（未整改 4 / 整改中 2 / 已整改 3）',
-    /未整改\s*4\s*条/.test(inspTxt) && /整改中\s*2\s*条/.test(inspTxt));
-  ok('等级环图中心显示隐患条数 9', /隐患条数/.test(inspTxt) && /\b9\b/.test(inspTxt));
+  /* ★ 2026-11-12 本段已瘦身：原来那 4 格（巡检记录 / 隐患条数 / 已整改 / 整改率）
+     与顶部 KPI 重复，已上移；本段改放「期限口径」三格 —— KPI 里没有、也只有
+     整改期限才算得出来的东西。旧断言因此改为对 KPI 断言（数字一个不少）。 */
+  ok('段内「未设期限」= 9 条（本组一条期限都没设）', /未设期限\s*9\s*条/.test(inspTxt), inspTxt.slice(0, 120));
+  ok('段内「整改及时率」= —（分母 0）', /整改及时率\s*—/.test(inspTxt), inspTxt.slice(0, 120));
+  ok('段内「最长逾期」= —（无逾期可判）', /最长逾期\s*—/.test(inspTxt), inspTxt.slice(0, 140));
+  ok('段内不再重复 KPI 的那四个数字（旧三态行已删）',
+    !/巡检记录\s*4\s*项/.test(inspTxt) && !/已整改\s*3\s*条/.test(inspTxt), inspTxt.slice(0, 80));
+  ok('段内空态改为「尚未设置整改期限」（有隐患但一条期限都没设）',
+    /尚未设置整改期限/.test(inspTxt), inspTxt.slice(-60));
+
+  const kpiTxt = Array.from(view().querySelectorAll('.grid.cols-4 > *'))
+    .map(c => c.textContent.replace(/\s+/g, ' '));
+  ok('KPI「隐患条数」= 9 条', /隐患条数\s*9\s*条/.test(kpiTxt[0]), kpiTxt[0].slice(0, 40));
+  ok('KPI「已整改」= 3 条', /已整改\s*3\s*条/.test(kpiTxt[1]), kpiTxt[1].slice(0, 40));
+  ok('KPI「已整改」脚注写明整改中 2 条', /另有\s*2\s*条整改中/.test(kpiTxt[1]), kpiTxt[1].slice(0, 60));
+  ok('KPI「逾期未整改」= 0 条且坦白说没设期限',
+    /逾期未整改\s*0\s*条/.test(kpiTxt[2]) && /尚未设置整改期限/.test(kpiTxt[2]), kpiTxt[2].slice(0, 60));
+  ok('KPI「整改率」= 33%', /整改率\s*33%/.test(kpiTxt[3]), kpiTxt[3].slice(0, 40));
   ok('顶部 KPI 仍然正好 4 张（新段没用 cols-4）',
     view().querySelectorAll('.grid.cols-4 > *').length === 4,
     view().querySelectorAll('.grid.cols-4 > *').length);
-  ok('新段等级图标注「按条数」，与台账等级图区分',
-    /按条数/.test(inspTxt) && /隐患等级分布/.test(view().textContent));
+
+  const sevCards = Array.from(view().querySelectorAll('.card'))
+    .filter(c => /隐患等级分布/.test((c.querySelector('h3') || {}).textContent || ''));
+  ok('等级分布改为巡检口径且按条数',
+    sevCards.length === 1 && /按条数/.test(sevCards[0].textContent) && /隐患条数/.test(sevCards[0].textContent),
+    sevCards[0] ? sevCards[0].textContent.replace(/\s+/g, ' ').slice(0, 80) : '无');
+  ok('页面只剩一张等级图（巡检段那张重复的已删）', sevCards.length === 1, sevCards.length);
+  ok('页面副标题写明「巡检记录 4 项」',
+    /巡检记录\s*4\s*项/.test(SD.views.dashboard.sub(SD.app.state.summary)),
+    SD.views.dashboard.sub(SD.app.state.summary));
 
   /* 口径说明：新段存在且旧四句仍在 */
   const noteTxt = view().textContent.replace(/\s+/g, ' ');
@@ -486,9 +514,9 @@ function ok(name, cond, extra) {
   ok('汇总条「全部记录」= 4 项', /4\s*项/.test(sumTxt));
   ok('汇总条「发现隐患」= 9 条', /发现隐患\s*9\s*条/.test(sumTxt));
   ok('汇总条整改率 = 33%', /整改率\s*33%/.test(sumTxt));
-  ok('巡检页与看板数字一致（9 条 / 33%）',
-    /发现隐患\s*9\s*条/.test(sumTxt) && /隐患条数\s*9\s*条/.test(inspTxt) &&
-    /整改率\s*33%/.test(sumTxt) && /整改率\s*33%/.test(inspTxt));
+  ok('巡检页与看板 KPI 同值（9 条 / 33%）',
+    /发现隐患\s*9\s*条/.test(sumTxt) && /隐患条数\s*9\s*条/.test(kpiTxt[0]) &&
+    /整改率\s*33%/.test(sumTxt) && /整改率\s*33%/.test(kpiTxt[3]));
   const sumBtn = sumBar && sumBar.querySelector('.js-go-dash');
   ok('汇总条有「去数据看板」入口（不含「新增」字样，避免抢新增按钮）',
     !!sumBtn && /去数据看板/.test(sumBtn.textContent) && !/新增/.test(sumBtn.textContent),
@@ -739,6 +767,153 @@ function ok(name, cond, extra) {
   ok('老记录保存后 problems 显式为 []',
     Array.isArray(l0.problems) && l0.problems.length === 0,
     JSON.stringify(l0.problems).slice(0, 40));
+
+  /* ================= 15. 整改期限：六格 / 逾期 / 及时率 =================
+     这是 v1.3.7 的核心：看板从"台账口径"整体切到"巡检口径"，
+     逾期与及时率全靠新字段 fixDueDate。没有这一节，新逻辑等于没测。 */
+  console.log('== 15. 整改期限：逾期与及时率 ==');
+  const t0 = SD.app.state.summary.today;
+  const pastD = SD.utils.shift(t0, -5);     // 已过期的期限
+  const futD = SD.utils.shift(t0, 7);       // 还在期限内的期限
+  data().inspections = [
+    { id: 'FD-M', code: 'FZXJ-2026-301', planName: '期限自检（多部门）', type: '日常巡检', area: 'Q 区',
+      dept: '生产一部', executor: '测试员', scheduledDate: t0, status: 'done', completedAt: t0,
+      photos: [], hazardCount: 9, hazardLevel: 'major', fixDueDate: pastD, fixDate: '', fixPhotos: [],
+      record: { findings: '三条问题', hazardCount: 9, signedBy: '测试员', signedAt: t0 },
+      problems: [
+        { id: 'p1', dept: '生产一部', content: '过期未改', type: '消防', level: 'major', count: 2,
+          photos: [], fixDueDate: pastD, fixDate: '', fixPhotos: [] },
+        { id: 'p2', dept: '生产一部', content: '超期改完', type: '电气', level: 'large', count: 3,
+          photos: [], fixDueDate: pastD, fixDate: t0, fixPhotos: [] },
+        { id: 'p3', dept: '仓储部', content: '还在期内', type: '消防', level: 'general', count: 4,
+          photos: [], fixDueDate: futD, fixDate: '', fixPhotos: [] }
+      ] },
+    { id: 'FD-S', code: 'FZXJ-2026-302', planName: '期限自检（无期限）', type: '日常巡检', area: 'R 区',
+      dept: '质检部', executor: '测试员', scheduledDate: t0, status: 'planned',
+      photos: [], hazardCount: 1, hazardLevel: '', fixDueDate: '', fixDate: '', fixPhotos: [], problems: [] }
+  ];
+  SD.store.save();
+  await SD.app.reload();
+  await wait(400);
+
+  const dueSt = SD.app.state.summary.inspectionStats;
+  ok('期限：行级 fixDueDate 被规范化读出',
+    SD.metrics.hazardRowsOf(data().inspections[0])[0].fixDueDate === pastD,
+    SD.metrics.hazardRowsOf(data().inspections[0])[0].fixDueDate);
+  ok('期限：隐患条数 = 10 条（2+3+4+1）', dueSt.hazardCount === 10, dueSt.hazardCount);
+
+  const six = ['doneOnTime', 'doneLate', 'doneNoDue', 'openOverdue', 'openInDue', 'openNoDue'];
+  ok('六格之和 = 隐患条数', six.reduce((a, k) => a + dueSt.due[k], 0) === dueSt.hazardCount,
+    six.map(k => k + ':' + dueSt.due[k]).join(' '));
+  ok('已整改三格之和 = fix.done',
+    dueSt.due.doneOnTime + dueSt.due.doneLate + dueSt.due.doneNoDue === dueSt.fix.done, dueSt.fix.done);
+  ok('未整改三格之和 = fix.none + fix.doing',
+    dueSt.due.openOverdue + dueSt.due.openInDue + dueSt.due.openNoDue === dueSt.fix.none + dueSt.fix.doing);
+  ok('逾期 = 2 条（过期且未整改，整改中的也算）', dueSt.due.openOverdue === 2, dueSt.due.openOverdue);
+  ok('超期整改 = 3 条（改了但晚于期限）', dueSt.due.doneLate === 3, dueSt.due.doneLate);
+  ok('在期限内未整改 = 4 条', dueSt.due.openInDue === 4, dueSt.due.openInDue);
+  ok('未设期限 = 1 条（不判逾期也不判按期）', dueSt.noDue.count === 1, dueSt.noDue.count);
+  ok('整改及时率分母只含已设期限且已整改的 3 条（按期 0）',
+    dueSt.due.doneOnTime === 0 && dueSt.due.doneOnTime + dueSt.due.doneLate === 3);
+  ok('最长逾期 = 5 天', dueSt.dueMaxDays === 5, dueSt.dueMaxDays);
+
+  const deptOf = n => dueSt.byDept.filter(d => d.dept === n)[0] || {};
+  ok('分部门逾期：生产一部 2 条', deptOf('生产一部').overdue === 2, JSON.stringify(deptOf('生产一部')));
+  ok('分部门未设期限：质检部 1 条', deptOf('质检部').noDue === 1, JSON.stringify(deptOf('质检部')));
+  ok('分部门三态合计 = 隐患条数',
+    dueSt.byDept.reduce((a, d) => a + d.fix.none + d.fix.doing + d.fix.done, 0) === dueSt.hazardCount,
+    dueSt.byDept.map(d => d.dept + ':' + (d.fix.none + d.fix.doing + d.fix.done)).join(' '));
+
+  /* ---- 15.2 看板：KPI 与段内三格 ---- */
+  await go('dashboard');
+  await wait(400);
+  const fdCards = Array.from(view().querySelectorAll('.grid.cols-4 > *'));
+  const fdKpi = fdCards.map(c => c.textContent.replace(/\s+/g, ' '));
+  ok('KPI 逾期未整改 = 2 条', /逾期未整改\s*2\s*条/.test(fdKpi[2]), fdKpi[2].slice(0, 50));
+  ok('KPI 逾期脚注追加「另有 1 条未设期限」', /另有\s*1\s*条未设期限/.test(fdKpi[2]), fdKpi[2]);
+  ok('有逾期时逾期卡才给红色告警',
+    !!(fdCards[2] && /red/.test((fdCards[2].querySelector('.stat-ico') || {}).className || '')),
+    fdCards[2] ? (fdCards[2].querySelector('.stat-ico') || {}).className : '无');
+  ok('KPI 整改率 = 30%（3/10）', /整改率\s*30%/.test(fdKpi[3]), fdKpi[3].slice(0, 40));
+
+  const fdSec = Array.from(view().querySelectorAll('.card'))
+    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '安全巡检（隐患与整改）');
+  const fdTxt = fdSec ? fdSec.textContent.replace(/\s+/g, ' ') : '';
+  ok('段内「未设期限」= 1 条', /未设期限\s*1\s*条/.test(fdTxt), fdTxt.slice(0, 80));
+  ok('段内「整改及时率」= 0%', /整改及时率\s*0%/.test(fdTxt), fdTxt.slice(0, 120));
+  ok('段内「最长逾期」= 5 天', /最长逾期\s*5\s*天/.test(fdTxt), fdTxt.slice(0, 140));
+  ok('段内给出分部门逾期条形', /分部门逾期未整改/.test(fdTxt));
+  ok('逾期条形按条件数摊到部门（生产一部 2 条）', /生产一部\s*2\s*条/.test(fdTxt), fdTxt.slice(-120));
+
+  const fdTrend = Array.from(view().querySelectorAll('.card'))
+    .find(c => /巡检隐患条数趋势/.test((c.querySelector('h3') || {}).textContent || ''));
+  ok('趋势卡改为巡检条数（上报 / 已整改两条线）',
+    !!fdTrend && /上报/.test(fdTrend.textContent) && /已整改/.test(fdTrend.textContent));
+  ok('趋势卡不再出现台账的「闭环」线', !!fdTrend && !/闭环/.test(fdTrend.textContent));
+
+  const fdDept = Array.from(view().querySelectorAll('.card'))
+    .find(c => /巡检各部门整改率/.test((c.querySelector('h3') || {}).textContent || ''));
+  ok('整改率卡改为巡检口径，label 为「已整改/条数」',
+    !!fdDept && /已整改条数 \/ 该部门隐患条数/.test(fdDept.textContent) &&
+    /（3\/5）/.test(fdDept.textContent.replace(/\s+/g, ' ')),
+    fdDept ? fdDept.textContent.replace(/\s+/g, ' ').slice(0, 100) : '无');
+
+  /* ---- 15.3 表单：字段、多部门行、取消拆分回填、保存镜像 ---- */
+  const fdef = (SD.views.inspection.FIELDS || []).filter(f => f.name === 'fixDueDate')[0];
+  ok('巡检表单有「整改期限」（日期、非必填、无默认值）',
+    !!fdef && fdef.label === '整改期限' && fdef.type === 'date' && !fdef.required && fdef.def == null,
+    fdef ? fdef.label + '/' + fdef.type : '无');
+
+  await go('inspection');
+  await wait(500);
+  click2(view().querySelector('[data-act="iops"]'));
+  await wait(300);
+  click2(Array.from(doc.querySelectorAll('.dd-item')).find(x => x.textContent.trim() === '编辑'));
+  await wait(600);
+  const fdModal = Array.from(doc.querySelectorAll('.mask .modal')).pop();
+  ok('多部门单打开即显示 3 行明细', !!fdModal && fdModal.querySelectorAll('.pr-row').length === 3,
+    fdModal ? fdModal.querySelectorAll('.pr-row').length : '无');
+  const dueInputs = fdModal ? Array.from(fdModal.querySelectorAll('.pr-row [data-role="fixDue"]')) : [];
+  ok('每行都有「整改期限」输入框', dueInputs.length === 3, dueInputs.length);
+  ok('期限按行回填（第 1 行 = 过期日）', dueInputs[0] && dueInputs[0].value === pastD,
+    dueInputs[0] ? dueInputs[0].value : '无');
+  ok('行内不复用 ff_ 前缀 id（否则主表单会串值）',
+    dueInputs.every(el => !el.id || el.id.indexOf('ff_') !== 0));
+  ok('多部门模式下整单「整改期限」被隐藏',
+    !!fdModal && !!fdModal.querySelector('#ff_fixDueDate') &&
+    fdModal.querySelector('#ff_fixDueDate').closest('.field').style.display === 'none',
+    fdModal && fdModal.querySelector('#ff_fixDueDate') ? fdModal.querySelector('#ff_fixDueDate').closest('.field').style.display : '无');
+
+  click2(fdModal && fdModal.querySelector('.js-ok'));
+  await wait(1200);
+  const saved2 = data().inspections.filter(t => t.id === 'FD-M')[0] || {};
+  ok('保存后顶层镜像 = 各行最早期限', saved2.fixDueDate === pastD, saved2.fixDueDate);
+  ok('保存后行级期限没丢（第 1 行仍是过期日）',
+    !!saved2.problems && saved2.problems[0] && saved2.problems[0].fixDueDate === pastD,
+    saved2.problems ? saved2.problems[0].fixDueDate : '无');
+  ok('保存后三条问题的条数没被改写',
+    !!saved2.problems && saved2.problems.length === 3 &&
+    saved2.problems.reduce((a, p) => a + p.count, 0) === 9,
+    saved2.problems ? saved2.problems.map(p => p.count).join('+') : '无');
+
+  /* ---- 15.4 执行记录：逐行期限 / 逾期，且部门数去重 ---- */
+  const rowM = Array.from(view().querySelectorAll('tbody tr'))
+    .filter(tr => tr.textContent.indexOf('FZXJ-2026-301') >= 0)[0];
+  if (rowM) {
+    click2(rowM.querySelector('[data-act="iops"]'));
+    await wait(350);
+    click2(Array.from(doc.querySelectorAll('.dd-item')).find(x => x.textContent.trim() === '执行记录'));
+    await wait(650);
+    const rm = Array.from(doc.querySelectorAll('.mask .modal')).pop();
+    const rmTxt = rm ? rm.textContent.replace(/\s+/g, ' ') : '';
+    ok('执行记录逐行给出逾期天数（生产一部 逾期 5 天）', /逾期\s*5\s*天/.test(rmTxt), rmTxt.slice(0, 120));
+    ok('执行记录逐行给出期限（仓储部 期限 xxx）', /期限\s*20\d\d-\d\d-\d\d/.test(rmTxt));
+    ok('执行记录里部门数按去重算（3 行只有 2 个部门）', /2\s*个部门/.test(rmTxt),
+      rmTxt.slice(-60));
+    ok('多部门单不显示整单期限（改为逐行判定）', /按明细逐行判定/.test(rmTxt));
+  } else {
+    ok('执行记录用例：找到 FZXJ-2026-301 这一行', false);
+  }
 
   ok('全程无 JS 报错', errors.length === 0, errors.join(' | ').slice(0, 200));
 

@@ -438,6 +438,9 @@ SD.metrics = (function () {
       level: lv,
       count: Math.max(0, Number(r.count) || 0),
       photos: arrOf(r.photos),
+      /* ★ 2026-11-12：整改期限（应改完的那天）与整改日期（实际改完的那天）分开存。
+         少一行这里，编辑一次就把期限丢了 —— 与 v1.3.6 的「条数被清零」同属数据损坏级。 */
+      fixDueDate: String(r.fixDueDate || ''),
       fixDate: String(r.fixDate || ''),
       fixPhotos: arrOf(r.fixPhotos)
     };
@@ -456,6 +459,7 @@ SD.metrics = (function () {
       level: LEVEL_ORDER.indexOf(t.hazardLevel) >= 0 ? t.hazardLevel : '',
       count: legacyCountOf(t),
       photos: arrOf(t.photos),
+      fixDueDate: String(t.fixDueDate || ''),
       fixDate: String(t.fixDate || ''),
       fixPhotos: arrOf(t.fixPhotos)
     }];
@@ -474,6 +478,42 @@ SD.metrics = (function () {
     if (r.fixDate) return 'done';
     if (arrOf(r.fixPhotos).length) return 'doing';
     return 'none';
+  }
+
+  /* ---------------- 整改期限六格（★ 2026-11-12）----------------
+     逾期、整改及时率都从这一个函数出，避免页面上出现第二套判定。
+     六格**互斥且完备**（每条隐患恰好落一格），因此恒等式成立：
+       六格之和 === hazardCount === fix.none + fix.doing + fix.done
+       doneOnTime + doneLate + doneNoDue === fix.done
+       openOverdue + openInDue + openNoDue === fix.none + fix.doing
+
+       · 「整改中」（只有整改照片、没有整改日期）归**未整改侧**参与逾期判定 ——
+         与台账 isOverdue 把 fixing 算逾期一致；否则"拍过照片但早就过期"会被当成没过期。
+       · **未设期限**单独成格，既不算逾期也不算按期 —— 存量记录全都没有这个字段，
+         硬判成任一边都是编数。页面必须把这一格显式展示出来。
+       · 日期都是 YYYY-MM-DD，可直接字符串比较（与 isOverdue 的做法一致）。 */
+  function rowDueOf(r, today) {
+    today = today || U.today();
+    var due = String((r && r.fixDueDate) || '');
+    var fixed = String((r && r.fixDate) || '');
+    var state, days = 0;
+
+    if (fixed) {
+      if (!due) state = 'doneNoDue';
+      else if (fixed <= due) state = 'doneOnTime';
+      else { state = 'doneLate'; days = U.diffDays(fixed, due) || 0; }   // 超期几天
+    } else {
+      if (!due) state = 'openNoDue';
+      else if (due < today) { state = 'openOverdue'; days = U.diffDays(today, due) || 0; }  // 逾期几天
+      else state = 'openInDue';
+    }
+    return { state: state, days: days > 0 ? days : 0 };
+  }
+
+  /** 行是否逾期（薄封装，给看板 / 巡检页共用，免得各处再写一遍判定） */
+  function rowOverdueOf(r, today) {
+    var d = rowDueOf(r, today);
+    return { overdue: d.state === 'openOverdue', days: d.days };
   }
 
   /** 整单整改状态：按「有条数的行」聚合 —— 全 done 才 done；有 none 则 none；否则 doing。
@@ -598,6 +638,14 @@ SD.metrics = (function () {
        · fixRate      = done / hazardCount（0 条时为 null，页面显示「—」）
                         —— 用条数做分母，才能和上面几个数字同量纲，不会出现
                            「隐患 5 条、已整改 4 条、整改率 50%」这种自相矛盾
+       · due          = 期限六格（★ 2026-11-12），见 rowDueOf。恒等式：
+                        六格之和 === hazardCount === fix.none + fix.doing + fix.done
+                        doneOnTime + doneLate + doneNoDue === fix.done
+                        openOverdue + openInDue + openNoDue === fix.none + fix.doing
+       · noDue        = 未设期限的条数（存量记录全都是这一格），**不参与逾期判定**
+       · trend        = 近 12 个月 {ym, found, fixed}：上报按 scheduledDate 归月，
+                        已整改按行 fixDate 归月；全 0 返回 []（页面走空态）
+       · byDept[].fix / overdue / noDue = 分部门的三态与逾期拆分（看板下钻用）
        · byLevel      = 按行 level 分组，value = 该组 Σ count（空 → 未定级）
                         每一行的条数整体计入该行等级 → Σ byLevel === hazardCount
        · byDept       = 按行 dept 分组（空 → 未指定部门），给条数与涉及任务数
@@ -618,6 +666,17 @@ SD.metrics = (function () {
     var fixTasks = { none: 0, doing: 0, done: 0 };
     var byLevelMap = {}, byDeptMap = {};
 
+    /* ★ 2026-11-12：整改期限六格 + 最长逾期天数（逾期多少天，页面直接显示） */
+    var due = { doneOnTime: 0, doneLate: 0, doneNoDue: 0, openOverdue: 0, openInDue: 0, openNoDue: 0 };
+    var dueMaxDays = 0;
+
+    /* ★ 2026-11-12：巡检隐患条数趋势（近 12 个月，两条线：上报 / 已整改）
+       上报按计划日期归月、已整改按行整改日期归月 —— 与台账 hazardTrend 同一逻辑，
+       所以「某月已整改 > 上报」是正常的（上月发现、本月改完），不是算错。 */
+    var trendMonths = [];
+    for (var mi = 11; mi >= 0; mi--) trendMonths.push(U.shiftYM(U.ym(today), -mi));
+    var trendMap = {}, trendSum = 0;
+
     insp.forEach(function (t) {
       if (byStatus[t.status] != null) byStatus[t.status]++;
 
@@ -631,15 +690,48 @@ SD.metrics = (function () {
 
       fixTasks[fixStatusOf(t)] += 1;        // 整单闭环任务数
 
+      /* 趋势·上报：整单条数归到计划月份（与 inspectionPhotos.trend 同一归月依据） */
+      if (t.scheduledDate) {
+        var ymF = U.ym(t.scheduledDate);
+        if (trendMonths.indexOf(ymF) >= 0) {
+          trendMap[ymF] = trendMap[ymF] || { found: 0, fixed: 0 };
+          trendMap[ymF].found += n;
+          trendSum += n;
+        }
+      }
+
       var seenDept = {};
       rows.forEach(function (r) {
         if (!r.count) return;               // ★ 条数口径的过滤条件，与照片口径分开写
-        fix[rowFixStatusOf(r)] += r.count;
+        var fs = rowFixStatusOf(r);
+        fix[fs] += r.count;
         byLevelMap[r.level] = (byLevelMap[r.level] || 0) + r.count;
 
+        /* 期限六格：**逐行**判定。顶层镜像取的是"最早期限"，可能整单看着过期、
+           而逐行都没逾期 —— 所以绝不能拿顶层值反推整单状态。 */
+        var dd = rowDueOf(r, today);
+        due[dd.state] += r.count;
+        if (dd.days > dueMaxDays) dueMaxDays = dd.days;
+
+        /* 趋势·整改：只算有条数、且有整改日期的行 */
+        if (r.fixDate) {
+          var ymD = U.ym(r.fixDate);
+          if (trendMonths.indexOf(ymD) >= 0) {
+            trendMap[ymD] = trendMap[ymD] || { found: 0, fixed: 0 };
+            trendMap[ymD].fixed += r.count;
+            trendSum += r.count;
+          }
+        }
+
         var dept = r.dept || NO_DEPT;
-        byDeptMap[dept] = byDeptMap[dept] || { dept: dept, hazardCount: 0, tasks: 0 };
+        byDeptMap[dept] = byDeptMap[dept] || {
+          dept: dept, hazardCount: 0, tasks: 0,
+          fix: { none: 0, doing: 0, done: 0 }, overdue: 0, noDue: 0
+        };
         byDeptMap[dept].hazardCount += r.count;
+        byDeptMap[dept].fix[fs] += r.count;
+        if (dd.state === 'openOverdue') byDeptMap[dept].overdue += r.count;
+        if (dd.state === 'doneNoDue' || dd.state === 'openNoDue') byDeptMap[dept].noDue += r.count;
         seenDept[dept] = 1;
       });
       /* 同一张单多个部门：每个部门各 +1 个任务，但同一部门在一张单里只算一次 */
@@ -657,6 +749,12 @@ SD.metrics = (function () {
     var byDept = Object.keys(byDeptMap).map(function (k) { return byDeptMap[k]; })
       .sort(function (a, b) { return b.hazardCount - a.hazardCount || b.tasks - a.tasks; });
 
+    /* 全 0 返回空数组（不是 12 个 0），交给页面走「暂无趋势数据」空态 */
+    var trend = trendSum ? trendMonths.map(function (ym) {
+      var c = trendMap[ym] || { found: 0, fixed: 0 };
+      return { ym: ym, found: c.found, fixed: c.fixed };
+    }) : [];
+
     return {
       records: insp.length,
       byStatus: byStatus,
@@ -667,7 +765,12 @@ SD.metrics = (function () {
       byDept: byDept,
       fix: fix,
       fixTasks: fixTasks,
-      fixRate: hazardCount ? fix.done / hazardCount : null
+      fixRate: hazardCount ? fix.done / hazardCount : null,
+      /* ★ 2026-11-12 新增（**只增不改**：老字段名与形状一律不动，避免下游断言与调用点连锁） */
+      due: due,                          // 六格，见 rowDueOf
+      dueMaxDays: dueMaxDays,            // 最长逾期 / 最长超期天数
+      noDue: { count: due.doneNoDue + due.openNoDue },   // 未设期限的条数（不参与逾期判定）
+      trend: trend                       // [{ym, found, fixed}]，全 0 → []
     };
   }
 
@@ -886,6 +989,8 @@ SD.metrics = (function () {
     hazardRowsOf: problemRowsOf,
     problemPhotosOf: problemPhotosOf,
     rowFixStatusOf: rowFixStatusOf,
+    rowDueOf: rowDueOf,
+    rowOverdueOf: rowOverdueOf,
     fixStatusOf: fixStatusOf,
     NO_DEPT: NO_DEPT,
     NO_LEVEL: NO_LEVEL,

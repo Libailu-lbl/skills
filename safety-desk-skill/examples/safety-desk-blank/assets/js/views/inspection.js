@@ -90,6 +90,15 @@ SD.views.inspection = (function () {
       help: '最多 18 张，可一次性多选；原图保存（大图自动外置，不压缩）。' +
             '张数会计入数据看板「各部门隐患照片」统计；与「隐患条数」不是同一口径（那个记条数）'
     },
+    /* 整改期限 ★ 2026-11-12 新增（用户要求）：
+       问题**应改完**的日期 —— 与下面「整改日期」（实际改完的那天）是两件事。
+       有了它才能算「逾期未整改」与「整改及时率」，此前看板这两个指标只能看隐患台账。
+       ⚠️ 非必填、**不设默认值**：留空 = 未设期限，看板单独计一格、不判逾期也不判按期。
+         如果给默认值（比如今天），新表单人人有期限，"未设期限"这一格就永远不出现。 */
+    {
+      name: 'fixDueDate', label: '整改期限', type: 'date',
+      help: '要求整改完成的日期（留空 = 未设期限，不参与逾期判定）'
+    },
     /* 整改日期 ★ 2026-11-11 新增（用户要求）：
        隐患整改**完成**的日期。与「计划日期」不是一回事 —— 计划日期是打算哪天巡检，
        整改日期是问题什么时候改完的，两者没有先后约束（可以同一天，也可以隔几天）。 */
@@ -130,7 +139,7 @@ SD.views.inspection = (function () {
      为什么隐藏而不是删字段：`#ff_*` 是 formDialog 的取值契约，
      行内一旦出现同名 id，主表单的照片/条数就会串行；而且隐藏后
      readValues 仍能拿到值，改回单部门时不会丢。 */
-  var MULTI_FIELDS = ['dept', 'hazardType', 'hazardCount', 'hazardLevel', 'photos', 'fixDate', 'fixPhotos'];
+  var MULTI_FIELDS = ['dept', 'hazardType', 'hazardCount', 'hazardLevel', 'photos', 'fixDueDate', 'fixDate', 'fixPhotos'];
   var LV_RANK = { major: 3, large: 2, general: 1 };
 
   /** 把一个标量表单值转成一条明细行（点「按部门拆分」时的第 1 行） */
@@ -142,6 +151,7 @@ SD.views.inspection = (function () {
       level: v.hazardLevel || '',
       count: Math.max(0, Number(v.hazardCount) || 0),
       photos: v.photos || [],
+      fixDueDate: v.fixDueDate || '',
       fixDate: v.fixDate || '',
       fixPhotos: v.fixPhotos || []
     };
@@ -149,12 +159,16 @@ SD.views.inspection = (function () {
 
   /** 明细行 → 整单汇总（顶层字段降级为镜像，统计仍只读行） */
   function summarizeRows(rows) {
-    var sum = 0, level = '', dept = '', type = '', fixDate = '';
+    var sum = 0, level = '', dept = '', type = '', fixDate = '', fixDueDate = '';
     var photos = [], fixPhotos = [];
     rows.forEach(function (r) {
       if (!dept && r.dept) dept = r.dept;
       if (!type && r.type) type = r.type;
       if (!fixDate && r.fixDate) fixDate = r.fixDate;
+      /* 期限取**最早**（最紧的那条决定整单），与「等级取最高」「部门取第一个」都不同。
+         注意：这只是展示用镜像，逾期与及时率一律逐行判定 —— 最早那行可能早就按期改完了，
+         拿它反推整单"已过期"会判错。 */
+      if (r.fixDueDate && (!fixDueDate || r.fixDueDate < fixDueDate)) fixDueDate = r.fixDueDate;
       sum += r.count;
       if ((LV_RANK[r.level] || 0) > (LV_RANK[level] || 0)) level = r.level;
       photos = photos.concat(r.photos);
@@ -162,7 +176,7 @@ SD.views.inspection = (function () {
     });
     return {
       dept: dept, hazardType: type, hazardCount: sum, hazardLevel: level,
-      photos: photos, fixDate: fixDate, fixPhotos: fixPhotos
+      photos: photos, fixDueDate: fixDueDate, fixDate: fixDate, fixPhotos: fixPhotos
     };
   }
 
@@ -279,6 +293,7 @@ SD.views.inspection = (function () {
             };
             setV('dept', s.dept); setV('hazardType', s.hazardType);
             setV('hazardCount', s.hazardCount); setV('hazardLevel', s.hazardLevel);
+            setV('fixDueDate', s.fixDueDate);
             setV('fixDate', s.fixDate);
             var ph = modal.querySelector('#ff_photos');
             if (ph && ph._ph) ph._ph.set(s.photos || []);
@@ -312,6 +327,7 @@ SD.views.inspection = (function () {
             hazardType: s.hazardType,
             hazardCount: s.hazardCount,
             hazardLevel: s.hazardLevel,
+            fixDueDate: s.fixDueDate,
             fixDate: s.fixDate,
             fixPhotos: s.fixPhotos,
             status: status,
@@ -338,7 +354,8 @@ SD.views.inspection = (function () {
             /* ★ 2026-11-11 新增：隐患条数 / 隐患等级（看板口径的两个来源） */
             hazardCount: Number(v.hazardCount) || 0,
             hazardLevel: v.hazardLevel || '',
-            /* ★ 2026-11-11 新增：整改照片 / 整改日期（与隐患照片 photos 分开存） */
+            /* ★ 2026-11-11 新增：整改期限 / 整改照片 / 整改日期（与隐患照片 photos 分开存） */
+            fixDueDate: v.fixDueDate || '',
             fixDate: v.fixDate || '',
             fixPhotos: v.fixPhotos || [],
             status: status,
@@ -376,7 +393,7 @@ SD.views.inspection = (function () {
           ? SD.api.updateInspection(t.id, payload)
           : SD.api.createInspection(Object.assign({
               completedAt: null, rescheduleTo: null, reason: '',
-              fixDate: '', fixPhotos: [], problems: []
+              fixDueDate: '', fixDate: '', fixPhotos: [], problems: []
             }, payload));
         return req.then(function () {
           U.toast(isEdit ? '巡检任务已更新' : '巡检任务已新增', 'ok');
@@ -492,10 +509,16 @@ SD.views.inspection = (function () {
     /* ★ 2026-11-12：多部门单的隐患明细（每条问题的部门 / 等级 / 条数 / 内容 / 整改）
        老记录没有 problems，这里不渲染，保持原样 —— 现有断言与用户习惯都不受影响 */
     var detailBlock = '';
+    /* 部门数按**去重**算：3 行可能只有 2 个部门（同一部门登记多条问题），
+       用 rows.length 会把它说成 3 个部门 —— 页面上就是个错数字。 */
+    var deptSeen = {};
+    rows.forEach(function (p) { deptSeen[p.dept || '未指定部门'] = 1; });
+    var deptN = Object.keys(deptSeen).length;
     if (isMulti) {
       detailBlock = '<label class="field full"><span>分部门明细</span><div class="pr-detail">' +
         rows.map(function (p, i) {
           var fs = SD.metrics.rowFixStatusOf(p);
+          var od = SD.metrics.rowOverdueOf(p);      // 逐行判定，不读顶层镜像
           var fsTxt = fs === 'done' ? ('已整改' + (p.fixDate ? '（' + p.fixDate + '）' : ''))
             : (fs === 'doing' ? '整改中' : '未整改');
           return '<div class="pr-d-item">' +
@@ -504,6 +527,10 @@ SD.views.inspection = (function () {
               '<span class="pr-d-tag">' + U.esc(p.level ? SD.dict.nameOf(SD.dict.DICT.severity, p.level) : '未定级') + '</span>' +
               '<span class="pr-d-tag">' + p.count + ' 条</span>' +
               '<span class="pr-d-tag ' + (fs === 'done' ? 'is-ok' : (fs === 'doing' ? 'is-warn' : '')) + '">' + U.esc(fsTxt) + '</span>' +
+              (p.fixDueDate
+                ? '<span class="pr-d-tag' + (od.overdue ? ' is-warn' : '') + '">' +
+                    (od.overdue ? '逾期 ' + od.days + ' 天' : '期限 ' + U.esc(p.fixDueDate)) + '</span>'
+                : '') +
               (p.photos.length ? '<button type="button" class="btn sm ghost js-pr-ph" data-i="' + i + '" data-k="p">' +
                 '照片 ' + p.photos.length + '</button>' : '') +
               (p.fixPhotos.length ? '<button type="button" class="btn sm ghost js-pr-ph" data-i="' + i + '" data-k="f">' +
@@ -526,7 +553,7 @@ SD.views.inspection = (function () {
         detailBlock +
         (isMulti
           ? '<label class="field"><span>隐患条数</span><div><b>' + SD.metrics.hazardCountOf(t) + ' 条</b> · ' +
-              rows.length + ' 个部门（按明细汇总）</div></label>'
+              deptN + ' 个部门（按明细汇总）</div></label>'
           : '<label class="field"><span>隐患条数</span><div>' + SD.metrics.hazardCountOf(t) + ' 条</div></label>' +
             '<label class="field"><span>隐患等级</span><div>' +
               U.esc(t.hazardLevel ? SD.dict.nameOf(SD.dict.DICT.severity, t.hazardLevel) : '未定级') + '</div></label>') +
@@ -535,6 +562,16 @@ SD.views.inspection = (function () {
           (t.photos && t.photos.length
             ? '<button type="button" class="btn sm js-insp-ph" data-id="' + t.id + '">查看 ' + t.photos.length + ' 张照片</button>'
             : '<span class="t-3">—（登记 / 编辑巡检时可添加）</span>') +
+        '</div></label>' +
+        /* ★ 2026-11-12：整改期限。多部门单**不显示整单镜像** —— 顶层取的是「最早期限」，
+           可能整单看着过期而逐行都没逾期，显示出来就是误导；逐行判定见上方分部门明细。 */
+        '<label class="field"><span>整改期限</span><div>' +
+          (isMulti
+            ? '<span class="t-3">按明细逐行判定（见上方分部门明细）</span>'
+            : (t.fixDueDate
+                ? U.esc(t.fixDueDate) + (SD.metrics.rowOverdueOf(rows[0]).overdue
+                    ? '（逾期 ' + SD.metrics.rowOverdueOf(rows[0]).days + ' 天）' : '')
+                : '<span class="t-3">未设期限（不参与逾期判定）</span>')) +
         '</div></label>' +
         /* ★ 2026-11-11：整改两件套也进执行记录（整改是在执行之后发生的，放这里最顺） */
         '<label class="field"><span>整改日期</span><div>' + U.esc(t.fixDate || '—') + '</div></label>' +
@@ -892,6 +929,9 @@ SD.views.inspection = (function () {
       '<b class="t-2">照片与整改</b>　「隐患照片」是整改前的问题现场，「整改照片」是整改后的结果，两者分开存、各自最多 18 张；' +
       '看板「隐患照片 / 各部门隐患照片」只统计前者，整改照片不计入，避免同一件事被数两遍。' +
       '「整改日期」记整改完成的那天，与「计划日期」相互独立。<br>' +
+      '<b class="t-2">整改期限</b>　「整改期限」是<b>要求改完</b>的那天，「整改日期」是<b>实际改完</b>的那天，两者不是一回事：' +
+      '期限早于实际完成日 = 超期整改；只填期限、没填日期 = 逾期未整改（期限已过时）。' +
+      '<b>留空 = 未设期限</b>，看板单独计一格，既不判逾期也不判按期 —— 没约定过时限却被算成"按期"，是编数。<br>' +
       '<b class="t-2">分部门登记</b>　一趟巡检走了几个部门、各有各的问题时，点表单里的「按部门拆分」，' +
       '每个部门一行（部门 / 问题内容 / 等级 / 条数 / 照片 / 整改）。一张单仍是<b>一条</b>记录、一个编号；' +
       '看板按明细行汇总：<b>各部门相加恒等于整单</b>。只涉及一个部门时不用拆分，照常填「隐患条数 / 照片」即可。' +
@@ -899,5 +939,7 @@ SD.views.inspection = (function () {
     ));
   }
 
-  return { name: '安全巡检', sub: sub, render: render };
+  /* FIELDS 对外暴露：字段定义是这份表单的契约，冒烟测试与后续模块（如字段级校验）
+     都靠它核对，别再从 DOM 里反推。 */
+  return { name: '安全巡检', sub: sub, render: render, FIELDS: FIELDS };
 })();

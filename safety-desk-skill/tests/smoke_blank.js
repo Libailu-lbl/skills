@@ -138,8 +138,14 @@ function ok(name, cond, extra) {
     view().textContent.replace(/\s+/g, ' ').slice(0, 120));
   ok('看板新增「各部门隐患照片」区块',
     Array.from(view().querySelectorAll('h3')).some(h => h.textContent.trim() === '各部门隐患照片'));
-  ok('看板 KPI 首卡改为「隐患照片」',
-    /隐患照片/.test((view().querySelector('.grid.cols-4 > *') || {}).textContent || ''));
+  /* ★ 2026-11-12：KPI 整体从台账口径切到巡检口径，首卡由「隐患照片」改为「隐患条数」 */
+  ok('看板 KPI 首卡改为「隐患条数」',
+    /隐患条数/.test((view().querySelector('.grid.cols-4 > *') || {}).textContent || ''));
+  ok('看板 KPI 不再统计台账（无「已闭环 / 延期跟进」）', (() => {
+    const t = Array.from(view().querySelectorAll('.grid.cols-4 > *'))
+      .map(c => c.textContent).join(' ');
+    return !/已闭环/.test(t) && !/延期跟进/.test(t);
+  })());
   ok('看板「暂无部门数据」空态', view().textContent.indexOf('暂无部门数据') >= 0);
   /* ★ 2026-11-12：分部门条数行只在真有隐患条数时才出现，空态不能留一条空行 */
   ok('空态不显示「分部门隐患条数」行', !view().querySelector('.js-insp-dept'));
@@ -151,10 +157,17 @@ function ok(name, cond, extra) {
   ok('新段空态给「暂无巡检隐患数据」',
     !!blankInspSec && /暂无巡检隐患数据/.test(blankInspSec.textContent),
     blankInspSec ? blankInspSec.textContent.replace(/\s+/g, ' ').slice(0, 60) : '无');
-  ok('新段 4 格初值全为 0 / —',
-    !!blankInspSec && /巡检记录\s*0\s*项/.test(blankInspSec.textContent.replace(/\s+/g, ' ')) &&
-    /整改率\s*—/.test(blankInspSec.textContent.replace(/\s+/g, ' ')),
-    blankInspSec ? blankInspSec.textContent.replace(/\s+/g, ' ').slice(0, 100) : '无');
+  /* ★ 2026-11-12：该段瘦身为「期限三格」（原来那 4 格与顶部 KPI 重复，已上移）。
+     空态应给出 未设期限 0 条 / 整改及时率 — / 最长逾期 —。 */
+  const blankInspTxt = blankInspSec ? blankInspSec.textContent.replace(/\s+/g, ' ') : '';
+  ok('新段 3 格初值为 0 条 / — / —',
+    /未设期限\s*0\s*条/.test(blankInspTxt) && /整改及时率\s*—/.test(blankInspTxt) &&
+    /最长逾期\s*—/.test(blankInspTxt), blankInspTxt.slice(0, 100));
+  ok('KPI「整改率」空值为 —', (() => {
+    const cards = view().querySelectorAll('.grid.cols-4 > *');
+    const last = cards[3] ? cards[3].textContent.replace(/\s+/g, ' ') : '';
+    return /整改率/.test(last) && /—/.test(last);
+  })());
   ok('新段没有挤掉顶部 KPI（cols-4 仍 4 张）',
     view().querySelectorAll('.grid.cols-4 > *').length === 4,
     view().querySelectorAll('.grid.cols-4 > *').length);
