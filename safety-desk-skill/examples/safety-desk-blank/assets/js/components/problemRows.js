@@ -25,10 +25,14 @@
         这里改成「再点一次删除」的按钮态，简单且零副作用。
 
    用法：
-     var ed = SD.comp.problemRows.mount(host, { value: t.problems, depts: [...] });
+     var ed = SD.comp.problemRows.mount(host, { value: t.problems, depts: [...], requireDue: true });
      ed.get()       // → [{id, dept, content, type, level, count, photos, fixDueDate, fixDate, fixPhotos}]
      ed.validate()  // → '第 2 行：…' 或 null
      ed.set(list)   // 整体替换（打开编辑时用）
+
+     requireDue（★ 2026-11-12）：true 时每行「整改期限」标红星并在 validate 里拦截
+     （只拦「真在用的行」，误点新增留下的空行不拦）。新增巡检传 true，编辑传 false ——
+     历史记录本就没有该字段，编辑侧强制会把人堵在保存按钮前。
    ========================================================= */
 window.SD = window.SD || {};
 SD.comp = SD.comp || {};
@@ -59,7 +63,7 @@ SD.comp.problemRows = (function () {
     }).join('');
   }
 
-  function rowHtml(uid, v) {
+  function rowHtml(uid, v, requireDue) {
     return '' +
       '<div class="pr-row-head">' +
         '<span class="pr-idx">问题</span>' +
@@ -80,7 +84,8 @@ SD.comp.problemRows = (function () {
         '<label class="field full"><span>问题内容</span>' +
           '<textarea class="input" rows="2" data-role="content" ' +
           'placeholder="例：配电箱门无法闭合，线路外露">' + esc(v.content) + '</textarea></label>' +
-        '<label class="field"><span>整改期限</span>' +
+        /* ★ 2026-11-12：新增时逐行必填（红星 + validate 拦截），编辑历史单不标必填 */
+        '<label class="field"><span' + (requireDue ? ' class="req"' : '') + '>整改期限</span>' +
           '<input class="input" type="date" data-role="fixDue" value="' + esc(v.fixDueDate) + '"></label>' +
         '<label class="field"><span>整改日期</span>' +
           '<input class="input" type="date" data-role="fixDate" value="' + esc(v.fixDate) + '"></label>' +
@@ -96,6 +101,9 @@ SD.comp.problemRows = (function () {
     if (!host) return null;
     host.innerHTML = '';
     var uid = 'pr' + (++seq);
+    /* ★ 2026-11-12：新增巡检时逐行必填「整改期限」（由调用方按新增/编辑传入），
+       编辑历史单不强制 —— 老记录本就没有这个字段，强制会把人堵在保存按钮前。 */
+    var requireDue = !!o.requireDue;
 
     var wrap = U.h(
       '<div class="pr-wrap">' +
@@ -178,7 +186,7 @@ SD.comp.problemRows = (function () {
          这里先建容器再 innerHTML，保住全部节点。 */
       var el = document.createElement('div');
       el.className = 'pr-row';
-      el.innerHTML = rowHtml(uid, v);
+      el.innerHTML = rowHtml(uid, v, requireDue);
       rowsBox.appendChild(el);
       var row = {
         id: v.id || (uid + 'r' + (rows.length + 1) + '_' + Math.random().toString(36).slice(2, 6)),
@@ -245,6 +253,20 @@ SD.comp.problemRows = (function () {
            问题内容不强制：老记录的条数有、内容没有，强制会把人堵在保存按钮前。 */
         if (Math.floor(Number(raw) || 0) > 0 && !dept) {
           return tag + '请填「责任部门」（有条数就必须说明是哪个部门）';
+        }
+        /* ★ 2026-11-12：新增时每行都要有「整改期限」（与单部门模式同一口径）。
+           判「这行是不是真的在用」而不是无脑要求 —— 误点「再加一个部门」留下的空行
+           不该逼着人先编个日期才能保存，那只会让人去乱填。
+           一行里但凡有部门 / 内容 / 条数 / 照片，就说明这行是真问题，期限必须给。 */
+        if (requireDue) {
+          var content = String(rows[i].el.querySelector('[data-role="content"]').value || '').trim();
+          var phs = rows[i].ph ? rows[i].ph.get() : [];
+          var filled = !!dept || !!content || Math.floor(Number(raw) || 0) > 0 || (phs && phs.length > 0);
+          var due = String(rows[i].el.querySelector('[data-role="fixDue"]').value || '').trim();
+          if (filled && !due) {
+            return tag + '请填「整改期限」：新增巡检的每一处问题都要给出整改完成期限' +
+              '（看板的逾期与整改及时率靠它判定；这行没内容就删掉）';
+          }
         }
       }
       return null;

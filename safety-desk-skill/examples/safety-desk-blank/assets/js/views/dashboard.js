@@ -19,6 +19,11 @@
    台账数字**只保留口径说明里一行快照**作对照，不再占版面 —— 两套整改率并列
    是这轮要去掉的重复项之一。
 
+   ★ 2026-11-12 统计范围收窄（用户要求）：本页**只统计当前自然年**。
+     归年依据 = 巡检的计划日期（scheduledDate），筛选落在 metrics.inspectionStats /
+     inspectionPhotos 内部（各筛一次容易漏，所以只在那两处筛），趋势横轴改成本年度 1–12 月。
+     页面顶部的「统计范围」横幅与口径说明第四段写明这条边界，避免数字变小时被当成丢数据。
+
    ★ 三条去重约束（改之前先读，否则会打挂冒烟测试）：
      ① 顶部 KPI 只用 `.grid.cols-4` 一处分组，且必须正好 4 张
         （测试按 `.grid.cols-4 > *` 全文档递归计数，多一个容器就变成 8）。
@@ -42,8 +47,11 @@ SD.views.dashboard = (function () {
     var ip = s.inspectionPhotos || { totalPhotos: 0 };
     var st = s.inspectionStats || { hazardCount: 0, records: 0 };
     /* 页面副标题只讲巡检。记录数放在这里，是因为顶部 4 张 KPI 已经让给
-       「条数 / 已整改 / 逾期 / 整改率」了，单据数没必要再占一张卡。 */
-    return '巡检记录 ' + (st.records || 0) + ' 项 · 隐患 ' + st.hazardCount + ' 条 · 隐患照片 ' + ip.totalPhotos + ' 张';
+       「条数 / 已整改 / 逾期 / 整改率」了，单据数没必要再占一张卡。
+       ★ 2026-11-12：带上年份前缀 —— 本页所有数字都是「当前自然年」的，
+         副标题不写年份，跨年后对比截图会被当成同一段时间的数据。 */
+    return (st.year ? st.year + ' 年 · ' : '') + '巡检记录 ' + (st.records || 0) + ' 项 · 隐患 ' +
+      st.hazardCount + ' 条 · 隐患照片 ' + ip.totalPhotos + ' 张';
   }
 
   function render(host, ctx) {
@@ -70,6 +78,24 @@ SD.views.dashboard = (function () {
     else overdueFoot = noDueN ? '另有 ' + noDueN + ' 条未设期限' : '无逾期';
 
     U.clear(host);
+
+    /* ---------- 统计范围横幅（★ 2026-11-12 新增） ----------
+       用户要求「看板只统计当前自然年，跨年数据不计入」。口径收窄必须**写出来**：
+       否则用户看到数字比上个月小了，第一反应是"数据丢了"，而不是"跨年了"。
+       放在 KPI 之前，一眼就能看到这一页的边界。
+       ⚠️ 不能放进 .grid.cols-4（测试按 `.grid.cols-4 > *` 全文档计数，塞进去就变 5 张）。 */
+    var CY = st.year || String(s.today || '').slice(0, 4);
+    var allN = st.recordsAll;
+    var allNote = (allN != null && allN !== st.records)
+      ? '　全库共 <b class="t-2">' + allN + '</b> 项巡检记录，其中 ' + U.esc(CY) + ' 年 <b class="t-2">' +
+        st.records + '</b> 项。'
+      : '';
+    host.appendChild(U.h(
+      '<div class="t-3 t-sm js-year-scope" style="margin:0 0 10px">' +
+        '<b class="t-2">统计范围：' + U.esc(CY) + ' 年</b>（1–12 月，按巡检计划日期归年）；' +
+        '跨年记录不计入本页任何数字。' + allNote +
+      '</div>'
+    ));
 
     /* ---------- 顶部关键数字（★ 2026-11-12 全巡检口径） ----------
        四张全部来自 s.inspectionStats，不再混台账。
@@ -110,7 +136,7 @@ SD.views.dashboard = (function () {
     var inspCard = U.h(
       '<section class="card">' +
         '<div class="card-head"><div><h3>安全巡检（隐患与整改）</h3>' +
-          '<div class="sub">按「整改期限」逐行判定：<b>有期限、期限已过、又没填整改日期 = 逾期</b>；' +
+          '<div class="sub">' + U.esc(CY) + ' 年度，按「整改期限」逐行判定：<b>有期限、期限已过、又没填整改日期 = 逾期</b>；' +
           '没设期限的单独计一格，既不判逾期也不判按期</div></div></div>' +
         '<div class="grid cols-2">' +
           '<div><div class="rpt-kv js-insp-kv"></div><div class="js-insp-dept-host"></div></div>' +
@@ -188,13 +214,15 @@ SD.views.dashboard = (function () {
        原来读台账（新增 / 闭环），现在读巡检：上报 / 已整改。
        两条线**归月依据不同**（上报按计划日期、已整改按行整改日期），
        所以某月「已整改 > 上报」是正常的（上月发现、本月改完），副标题要写明，
-       否则用户第一眼就会当成算错。图例也只写「近 12 个月」，不写「合计」——
-       全时段条数与窗口内条数本就不相等。 */
+       否则用户第一眼就会当成算错。
+       ★ 2026-11-12：横轴由「滚动近 12 个月」改为「本年度 1–12 月」——
+         看板只统计当前自然年，把上一年 12 月画进来会出现一根恒为 0 的柱子。
+         图例也只写「本年度」，不写「合计」：跨年的整改条数不在图里，写"合计"会误导。 */
     var trend = st.trend || [];
     var trendCard = U.h(
       '<section class="card">' +
         '<div class="card-head"><div><h3>巡检隐患条数趋势</h3>' +
-        '<div class="sub">近 12 个月巡检<b>上报</b>与<b>已整改</b>的隐患条数（单位：条）；' +
+        '<div class="sub">' + U.esc(CY) + ' 年各月巡检<b>上报</b>与<b>已整改</b>的隐患条数（单位：条）；' +
         '上报按计划日期归月、已整改按整改日期归月，两者不同月属正常</div></div></div>' +
         '<div class="js-chart"></div><div class="js-legend"></div>' +
       '</section>'
@@ -215,14 +243,14 @@ SD.views.dashboard = (function () {
         ]
       });
       trendCard.querySelector('.js-legend').innerHTML = SD.comp.chart.legend([
-        { name: '上报合计（近 12 个月）', color: '#d92d20', value: sumFound + ' 条' },
-        { name: '已整改合计（近 12 个月）', color: '#12805c', value: sumFixed + ' 条' }
+        { name: '上报合计（' + CY + ' 年）', color: '#d92d20', value: sumFound + ' 条' },
+        { name: '已整改合计（' + CY + ' 年）', color: '#12805c', value: sumFixed + ' 条' }
       ]);
     }
     host.appendChild(trendCard);
 
     /* ---------- 各部门隐患照片趋势 ----------
-       与全厂同窗口（近 12 个月，按巡检计划日期归月）；部门线可多选对比，
+       与全厂同窗口（本年度 1–12 月，按巡检计划日期归月）；部门线可多选对比，
        默认勾选总量前 4 的部门，勾选状态记在 filters.dashboard，刷新不丢。 */
     var pt = ip.trend || { months: [], depts: [] };
     var DEPT_COLORS = ['#0d7a72', '#2f8f9d', '#4fa3a5', '#6fb3a8', '#8c9bd6', '#a98cc4', '#c48fa0', '#d9a406', '#5b7fa6', '#b7c4c7'];
@@ -247,7 +275,7 @@ SD.views.dashboard = (function () {
     var deptTrendCard = U.h(
       '<section class="card">' +
         '<div class="card-head"><div><h3>各部门隐患照片趋势</h3>' +
-        '<div class="sub">近 12 个月巡检上传的隐患照片（单位：张）；点部门名增减对比，默认总量前 ' + Math.min(4, pt.depts.length) + '</div></div>' +
+        '<div class="sub">' + U.esc(CY) + ' 年各月巡检上传的隐患照片（单位：张）；点部门名增减对比，默认总量前 ' + Math.min(4, pt.depts.length) + '</div></div>' +
         '<div class="js-dept-chips chip-group"></div></div>' +
         '<div class="js-chart"></div><div class="js-legend"></div>' +
       '</section>'
@@ -437,6 +465,7 @@ SD.views.dashboard = (function () {
       '所以类型合计 = 有隐患照片的上报处数，不等于照片张数 —— 照片是证据，一次上报是一个事件。</div>' +
       '<div style="margin-top:4px"><b>二、隐患台账（仅作对照快照）</b>　台账仍在「隐患整改」模块里维护，' +
       '本页只保留一行对照：<b>台账 ' + (s.totalHazards || 0) + ' 条</b>（已闭环 ' + (s.closedCount || 0) + ' 条）—— ' +
+      '这一行是<b>全期数字，不随本页年份过滤</b>（台账模块自己带年份筛选）；' +
       '闭环率、逾期未闭环、延期跟进一律以台账为准。' +
       '原「隐患趋势」与「各部门整改率」两张图已改为巡检口径，<b>不再重复展示台账</b>，' +
       '避免两套整改率在同一屏里各说各话。</div>' +
@@ -457,6 +486,12 @@ SD.views.dashboard = (function () {
       '与「各部门隐患照片」能把同一张单拆到不同部门，而副标题里的「巡检记录 N 项」仍是单据数，不会被拆成多张。' +
       '老记录没有明细，自动视为<b>一行</b>，历史数字一个不变。' +
       '<b>巡检隐患不会自动生成隐患台账记录</b>，所以本页只讲巡检，不折算台账。</div>' +
+      '<div style="margin-top:4px"><b>四、统计范围（2026-11-12）</b>　本页<b>只统计当前自然年</b>：' +
+      '按巡检<b>计划日期</b>归年，跨年记录<b>不计入</b> KPI、隐患条数、整改三态、整改期限、' +
+      '隐患照片、类型分布、等级分布、各部门条数与整改率、以及两张趋势图的任何一项；' +
+      '趋势横轴就是本年度 1–12 月，不再滚动取近 12 个月。' +
+      '往年记录不会消失 —— 到「安全巡检」列表用<b>年份下拉</b>即可查看，那是列表的视图过滤，不进看板；' +
+      '看板副标题与各段标题都带年份，跨年后一眼能看出这一屏是哪一年的数。</div>' +
       '<div style="margin-top:4px">两条口径（照片<b>张数</b> / 隐患<b>条数</b>）在页面各段标题里已分别注明，不混算；' +
       '台账数字只保留上面一行快照。</div>' +
       '</section>'

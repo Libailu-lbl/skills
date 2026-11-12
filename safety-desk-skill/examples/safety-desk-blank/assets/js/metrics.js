@@ -383,6 +383,9 @@ SD.metrics = (function () {
          ★ 2026-11-12：一条单可分多个部门，部门 / 类型改按「问题明细行」归属；
            老记录没有 problems，仍取顶层 dept / hazardType，结果与改造前完全一致。
        · 时间归属：按 scheduledDate（计划日期）分月，与巡检列表「归年」口径一致。
+       · ★ 2026-11-12：**只统计当前自然年**（见 yearOf / monthsOfYear）。跨年记录不进任何
+         口径，趋势横轴也改成本年度 1–12 月（原来滚动近 12 个月会把上一年 12 月带进来，
+         与「只统计当年」直接矛盾）。
        · 不排除任何任务状态：照片一旦上传即为现场证据，任务后续改期 / 取消也照算。
          若按状态排除，用户会看到列表里明明有照片、看板却不计数，属对不上账。
        · 没上传照片的任务不进任何口径（既不计张数，也不计任务数）。
@@ -400,6 +403,31 @@ SD.metrics = (function () {
   var NO_DEPT = '未指定部门';
   var NO_TYPE = '未分类';
   var NO_LEVEL = '未定级';
+
+  /* ---------------- 自然年（★ 2026-11-12 看板统计范围）----------------
+     用户要求：数据看板**只统计当前自然年**，跨年数据不计入。
+     这里给出三个纯函数，看板的两个统计入口（inspectionStats / inspectionPhotos）
+     共用同一套判定，避免两处各写一遍、边界不一致。
+
+     ⚠️ 归年依据 = scheduledDate（计划日期），与巡检列表「年份」下拉完全一致。
+        不用 completedAt / fixDate：一条 2025 年计划的巡检在 2026 年才改完，
+        它仍然是「2025 年的巡检」，混进 2026 年会让当年数字虚高。
+     ⚠️ 取不到年份的记录（脏数据 / 导入缺列）**不计入当年**，也不塞进别的年份——
+        宁可少算一条，也不要把它归到某一年去编数。 */
+  function yearOf(v) {
+    var m = /^(\d{4})/.exec(String(v == null ? '' : v).trim());
+    return m ? m[1] : '';
+  }
+
+  /** 某年的 12 个月 'YYYY-MM'：看板趋势图横轴固定为「本年度 1–12 月」 */
+  function monthsOfYear(y) {
+    var out = [];
+    for (var m = 1; m <= 12; m++) out.push(y + '-' + (m < 10 ? '0' + m : String(m)));
+    return out;
+  }
+
+  /** 巡检记录归年（按计划日期）；取不到返回 '' */
+  function inspYearOf(t) { return yearOf(t && t.scheduledDate); }
 
   function photoCountOf(t) {
     return Object.prototype.toString.call(t && t.photos) === '[object Array]' ? t.photos.length : 0;
@@ -555,11 +583,13 @@ SD.metrics = (function () {
 
   function inspectionPhotos(data, today) {
     today = today || U.today();
-    var insp = (data && data.inspections) || [];
+    var Y = yearOf(today);
+    /* ★ 2026-11-12：先按自然年筛掉跨年记录，后面的张数 / 部门 / 类型 / 趋势全都只算当年 */
+    var insp = ((data && data.inspections) || []).filter(function (t) {
+      return inspYearOf(t) === Y;
+    });
 
-    var months = [];
-    var thisYM = U.ym(today);
-    for (var i = 11; i >= 0; i--) months.push(U.shiftYM(thisYM, -i));
+    var months = monthsOfYear(Y);
 
     var totalPhotos = 0, totalTasks = 0, totalRecords = 0;
     var byDept = {};
@@ -613,6 +643,8 @@ SD.metrics = (function () {
       /* ★ 2026-11-12 新增：有照片的记录数。多部门单的 totalTasks 是「处」，
          与「任务」不是一回事 —— 看板据此在两者不等时补一句「共 N 项任务」 */
       totalRecords: totalRecords,
+      /* ★ 2026-11-12：当前统计年份（'YYYY'），看板标题与口径说明直接引用，避免页面自己再算一遍 */
+      year: Y,
       byDept: list,
       byType: typeList,
       trend: { months: months, depts: depts }
@@ -626,7 +658,11 @@ SD.metrics = (function () {
        巡检页顶部汇总条、看板「安全巡检」段都读 inspectionStats，数值必然一致。
 
      口径（与本文件外的口径说明段必须同步）：
-       · records      = 全部巡检记录数（含改期 / 取消，不筛状态）
+       · **统计范围（★ 2026-11-12 新增）= 当前自然年**：按 scheduledDate（计划日期）归年，
+         跨年记录一律不计入（records / byStatus / 条数 / 整改 / 期限 / 趋势全都只算当年）。
+         这一条对「巡检页汇总条」同样生效 —— 两页读同一份数据，口径不可能分叉。
+       · records      = **当年**巡检记录数（含改期 / 取消，不筛状态）
+       · recordsAll   = 全库记录数（全部年份，只作对照，页面可选显示）
        · byStatus     = 四种任务状态各自条数
        · weekRate     = 复用 weekInspectionRate（本周已完成 / 本周计划，排除取消，改期不减免）
        · hazardCount  = Σ 各行 count ← **隐患条数的唯一口径**（人工填报，不是照片张数）
@@ -643,7 +679,7 @@ SD.metrics = (function () {
                         doneOnTime + doneLate + doneNoDue === fix.done
                         openOverdue + openInDue + openNoDue === fix.none + fix.doing
        · noDue        = 未设期限的条数（存量记录全都是这一格），**不参与逾期判定**
-       · trend        = 近 12 个月 {ym, found, fixed}：上报按 scheduledDate 归月，
+       · trend        = **本年度 1–12 月** {ym, found, fixed}：上报按 scheduledDate 归月，
                         已整改按行 fixDate 归月；全 0 返回 []（页面走空态）
        · byDept[].fix / overdue / noDue = 分部门的三态与逾期拆分（看板下钻用）
        · byLevel      = 按行 level 分组，value = 该组 Σ count（空 → 未定级）
@@ -658,7 +694,12 @@ SD.metrics = (function () {
 
   function inspectionStats(data, today) {
     today = today || U.today();
-    var insp = (data && data.inspections) || [];
+    /* ★ 2026-11-12：看板只统计**当前自然年** —— 先按计划日期筛出当年记录，
+       后面每一行代码（状态数 / 条数 / 六格 / 部门 / 等级 / 趋势）都只跑当年数据。
+       放在函数最前面而不是各段里各筛一次，是为了让「漏筛」在结构上不可能发生。 */
+    var Y = yearOf(today);
+    var all = (data && data.inspections) || [];
+    var insp = all.filter(function (t) { return inspYearOf(t) === Y; });
 
     var byStatus = { planned: 0, done: 0, rescheduled: 0, cancelled: 0 };
     var hazardCount = 0, hazardTasks = 0;
@@ -670,11 +711,12 @@ SD.metrics = (function () {
     var due = { doneOnTime: 0, doneLate: 0, doneNoDue: 0, openOverdue: 0, openInDue: 0, openNoDue: 0 };
     var dueMaxDays = 0;
 
-    /* ★ 2026-11-12：巡检隐患条数趋势（近 12 个月，两条线：上报 / 已整改）
+    /* ★ 2026-11-12：巡检隐患条数趋势（**本年度 1–12 月**，两条线：上报 / 已整改）
        上报按计划日期归月、已整改按行整改日期归月 —— 与台账 hazardTrend 同一逻辑，
-       所以「某月已整改 > 上报」是正常的（上月发现、本月改完），不是算错。 */
-    var trendMonths = [];
-    for (var mi = 11; mi >= 0; mi--) trendMonths.push(U.shiftYM(U.ym(today), -mi));
+       所以「某月已整改 > 上报」是正常的（上月发现、本月改完），不是算错。
+       横轴从「滚动近 12 个月」改为「本年度各月」：既然只统计当年，
+       把上一年 12 月画进来就会出现一根永远为 0 的柱子，看着像丢数据。 */
+    var trendMonths = monthsOfYear(Y);
     var trendMap = {}, trendSum = 0;
 
     insp.forEach(function (t) {
@@ -756,9 +798,14 @@ SD.metrics = (function () {
     }) : [];
 
     return {
+      /* ★ 2026-11-12：records 现在是**当年**记录数；recordsAll 是全库数（对照用） */
       records: insp.length,
+      recordsAll: all.length,
+      year: Y,
       byStatus: byStatus,
-      weekRate: weekInspectionRate(insp, today),
+      /* 本周完成率传**全库**记录：它是一个「周」指标，跨年那一周（12-29~01-04）
+         本来就该把上一年那几天算进去，套上自然年过滤反而与巡检页顶部的完成率不一致 */
+      weekRate: weekInspectionRate(all, today),
       hazardCount: hazardCount,
       hazardTasks: hazardTasks,
       byLevel: byLevel,

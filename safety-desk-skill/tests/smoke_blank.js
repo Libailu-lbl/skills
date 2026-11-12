@@ -404,6 +404,8 @@ function ok(name, cond, extra) {
     cm && !!cm.querySelector('.js-split') && cm.querySelectorAll('.pr-row').length === 0,
     cm && cm.querySelectorAll('.pr-row').length);
   set(cm, 'ff_planName', '编号冒烟'); set(cm, 'ff_area', 'A 区'); set(cm, 'ff_executor', '李佰陆');
+  /* ★ 2026-11-12：新增巡检的「整改期限」是必填项，不填会被表单拦下（见 smoke_inspection_photos §16） */
+  set(cm, 'ff_fixDueDate', SD.utils.shift(SD.utils.today(), 7));
   set(cm, 'ff_code', 'BAD');
   await submit(cm, 700);
   ok('格式不符被拦下', /格式应形如/.test(errText(modal())), errText(modal()));

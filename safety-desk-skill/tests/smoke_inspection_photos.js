@@ -510,8 +510,11 @@ function ok(name, cond, extra) {
   const sumBar = view().querySelector('.js-insp-sum');
   ok('巡检页有口径汇总条', !!sumBar);
   const sumTxt = sumBar ? sumBar.textContent.replace(/\s+/g, ' ') : '';
-  ok('汇总条写明「不限本周 / 年份」', /不限本周/.test(sumTxt), sumTxt.slice(0, 60));
-  ok('汇总条「全部记录」= 4 项', /4\s*项/.test(sumTxt));
+  /* ★ 2026-11-12：看板改为「只统计当前自然年」后，这条汇总条也改成年度口径 ——
+     原来写的是「全部记录（不限本周 / 年份）」，现在必须写出年份，否则与看板对不上。 */
+  ok('汇总条写明「本年度 + 跨年不计入」', /年度记录（按计划日期归年，跨年不计入）/.test(sumTxt),
+    sumTxt.slice(0, 60));
+  ok('汇总条「当年记录」= 4 项', /年度记录[^0-9]*4\s*项/.test(sumTxt), sumTxt.slice(0, 60));
   ok('汇总条「发现隐患」= 9 条', /发现隐患\s*9\s*条/.test(sumTxt));
   ok('汇总条整改率 = 33%', /整改率\s*33%/.test(sumTxt));
   ok('巡检页与看板 KPI 同值（9 条 / 33%）',
@@ -860,7 +863,9 @@ function ok(name, cond, extra) {
 
   /* ---- 15.3 表单：字段、多部门行、取消拆分回填、保存镜像 ---- */
   const fdef = (SD.views.inspection.FIELDS || []).filter(f => f.name === 'fixDueDate')[0];
-  ok('巡检表单有「整改期限」（日期、非必填、无默认值）',
+  /* ★ 2026-11-12：基座定义仍是「非必填、无默认值」—— 必填是 resolveFields 按「新增」注入的，
+     编辑侧不强制（历史记录本就没有这个字段）。本条只锁基座，新增必填见第 16 节。 */
+  ok('巡检表单「整改期限」基座定义：日期、无默认值（必填在新增时注入）',
     !!fdef && fdef.label === '整改期限' && fdef.type === 'date' && !fdef.required && fdef.def == null,
     fdef ? fdef.label + '/' + fdef.type : '无');
 
@@ -913,6 +918,231 @@ function ok(name, cond, extra) {
     ok('多部门单不显示整单期限（改为逐行判定）', /按明细逐行判定/.test(rmTxt));
   } else {
     ok('执行记录用例：找到 FZXJ-2026-301 这一行', false);
+  }
+
+  /* ================= 16. 新增巡检：整改期限必填（★ 2026-11-12） =================
+     用户要求：「新增巡检记录时，将期限设为必填项并进行校验，未填写期限时阻止提交并给出明确提示」。
+     这一节就测三件事：①单部门空期限被拦（且提示说清原因）②多部门逐行必填
+     ③误点新增留下的空行不拦 ④编辑历史单不强制（不能把老数据锁死）。 */
+  console.log('== 16. 新增巡检：整改期限必填 ==');
+  data().inspections = [];
+  SD.store.save();
+  await SD.app.reload();
+  await go('inspection');
+  await wait(400);
+
+  const openCreate = async () => {
+    const btn = Array.from(view().querySelectorAll('.btn'))
+      .find(b => b.textContent.trim() === '新增巡检');
+    click2(btn);
+    await wait(500);
+    return Array.from(doc.querySelectorAll('.mask .modal')).pop();
+  };
+  const setVal = (root, sel, v) => { const el = root && root.querySelector(sel); if (el) el.value = v; };
+  const errOf = m => {
+    const e = m && m.querySelector('.field-err');
+    return e && !e.hidden ? e.textContent.replace(/\s+/g, ' ') : '';
+  };
+  const fillBasics = (m) => {
+    setVal(m, '#ff_planName', '期限必填自检');
+    setVal(m, '#ff_area', 'S 区');
+    setVal(m, '#ff_executor', '测试员');
+  };
+
+  /* ---- 16.1 单部门：不填期限 → 阻止提交 + 明确提示 ---- */
+  let cm = await openCreate();
+  ok('新增表单已打开', !!cm);
+  ok('新增时「整改期限」标为必填（红星 class=req）',
+    !!(cm && cm.querySelector('#ff_fixDueDate')) &&
+    cm.querySelector('#ff_fixDueDate').closest('.field').querySelector('span').className === 'req',
+    cm && cm.querySelector('#ff_fixDueDate') ? cm.querySelector('#ff_fixDueDate').closest('.field').querySelector('span').className : '无');
+  ok('新增时「整改期限」默认留空（不替用户编日期）',
+    cm && cm.querySelector('#ff_fixDueDate').value === '',
+    cm && cm.querySelector('#ff_fixDueDate').value);
+
+  fillBasics(cm);
+  click2(cm && cm.querySelector('.js-ok'));
+  await wait(500);
+  const e1 = errOf(cm);
+  ok('未填期限 → 阻止提交（弹窗没关）', !!cm && cm.parentNode && doc.body.contains(cm), e1);
+  ok('提示写明原因（不是干巴巴一句"不能为空"）',
+    /整改期限/.test(e1) && /逾期/.test(e1) && /及时率/.test(e1), e1);
+  ok('未填期限时没有写入任何记录', data().inspections.length === 0, data().inspections.length);
+
+  /* ---- 16.2 填了期限 → 正常保存，且期限落库 ---- */
+  setVal(cm, '#ff_fixDueDate', futD);
+  click2(cm && cm.querySelector('.js-ok'));
+  await wait(1100);
+  const created = data().inspections[0] || {};
+  ok('填了期限后可以保存', data().inspections.length === 1, data().inspections.length);
+  ok('保存的「整改期限」= 表单里填的日期', created.fixDueDate === futD, created.fixDueDate);
+
+  /* ---- 16.3 多部门：有内容的行没有期限 → 拦；空行不拦 ---- */
+  data().inspections = [];
+  SD.store.save();
+  await SD.app.reload();
+  await go('inspection');
+  await wait(400);
+
+  cm = await openCreate();
+  fillBasics(cm);
+  click2(cm && cm.querySelector('.js-split'));
+  await wait(400);
+  ok('已进入分部门模式（1 行明细）',
+    !!cm && cm.querySelectorAll('.pr-row').length === 1, cm ? cm.querySelectorAll('.pr-row').length : '无');
+  ok('分部门模式下整单期限必填被解除（改由各行自己校验）',
+    !!cm && cm.querySelector('#ff_fixDueDate').closest('.field').style.display === 'none');
+
+  const row1 = cm.querySelectorAll('.pr-row')[0];
+  setVal(row1, '[data-role="dept"]', '生产一部');
+  setVal(row1, '[data-role="content"]', '消防通道被物料占用');
+  click2(cm.querySelector('.js-ok'));
+  await wait(500);
+  const e2 = errOf(cm);
+  ok('多部门：行有内容、没填期限 → 阻止提交',
+    /第 1 行/.test(e2) && /整改期限/.test(e2), e2);
+
+  /* 空白行不该拦人：点「再加一个部门」多出来的行，只要把条数清成 0、部门留空，
+     就不该逼着人先编个期限 —— 否则用户只能去乱填一个日期才能保存。
+     （注意：新加的行条数默认 1、部门必填，这是既有规则，本条只验证「空白行」豁免） */
+  setVal(row1, '[data-role="fixDue"]', futD);
+  click2(cm.querySelector('[data-act="add"]'));
+  await wait(250);
+  const row2 = cm.querySelectorAll('.pr-row')[1];
+  ok('再加一行', cm.querySelectorAll('.pr-row').length === 2, cm.querySelectorAll('.pr-row').length);
+  setVal(row2, '[data-role="count"]', '0');
+  click2(cm.querySelector('.js-ok'));
+  await wait(1200);
+  const mCreated = data().inspections[0] || {};
+  ok('空白行豁免：第 1 行有期限、第 2 行清空 → 可以保存',
+    data().inspections.length === 1, data().inspections.length + ' / ' + errOf(cm));
+  ok('多部门保存后行级期限落库',
+    !!(mCreated.problems && mCreated.problems[0]) && mCreated.problems[0].fixDueDate === futD,
+    mCreated.problems ? mCreated.problems[0].fixDueDate : '无');
+  ok('多部门保存后整单期限镜像 = 行期限', mCreated.fixDueDate === futD, mCreated.fixDueDate);
+
+  /* ---- 16.4 编辑历史单不强制（老记录没有期限也能保存） ---- */
+  data().inspections = [{
+    id: 'LEG-NODUE', code: 'FZXJ-2026-901', planName: '历史无期限单据', type: '日常巡检',
+    area: 'T 区', dept: '生产一部', executor: '测试员', scheduledDate: t0, status: 'planned',
+    photos: [], hazardCount: 1, hazardLevel: '', fixDueDate: '', fixDate: '', fixPhotos: [], problems: []
+  }];
+  SD.store.save();
+  await SD.app.reload();
+  await go('inspection');
+  await wait(400);
+  click2(view().querySelector('[data-act="iops"]'));
+  await wait(300);
+  click2(Array.from(doc.querySelectorAll('.dd-item')).find(x => x.textContent.trim() === '编辑'));
+  await wait(600);
+  const legModal = Array.from(doc.querySelectorAll('.mask .modal')).pop();
+  ok('编辑历史单：整单期限不标必填',
+    !!legModal && legModal.querySelector('#ff_fixDueDate').closest('.field').querySelector('span').className !== 'req',
+    legModal && legModal.querySelector('#ff_fixDueDate') ? em.querySelector('#ff_fixDueDate').closest('.field').querySelector('span').className : '无');
+  click2(legModal && legModal.querySelector('.js-ok'));
+  await wait(1100);
+  const legSaved = data().inspections.filter(t => t.id === 'LEG-NODUE')[0] || {};
+  ok('编辑历史单：不填期限也能保存（不把老数据锁死）',
+    data().inspections.length === 1 && legSaved.fixDueDate === '', legSaved.fixDueDate);
+
+  /* ================= 17. 看板只统计当前自然年（★ 2026-11-12） =================
+     用户要求：「数据看板仅统计当年（当前自然年）的数据，跨年数据不计入统计范围，
+     并确保相关筛选与展示逻辑同步生效」。
+     这一节用「当年 2 条 + 去年 1 条」验证：
+       · 看板所有数字只含当年；跨年那条不出现
+       · 趋势横轴是本年度 1–12 月（不是滚动的近 12 个月）
+       · 巡检页年度汇总条与看板同值
+       · 列表仍能切到去年查看（列表是视图过滤，不是把数据藏了） */
+  console.log('== 17. 看板只统计当年 ==');
+  const Y0 = t0.slice(0, 4);
+  const LY = String(Number(Y0) - 1);
+  const oldD = LY + '-06-10';
+  data().inspections = [
+    { id: 'Y-CUR-1', code: 'FZXJ-' + Y0 + '-801', planName: '当年单据甲', type: '日常巡检', area: 'U 区',
+      dept: '生产一部', executor: '测试员', scheduledDate: t0, status: 'done', completedAt: t0,
+      photos: shot(2), hazardCount: 2, hazardLevel: 'general', fixDueDate: futD, fixDate: '', fixPhotos: [],
+      record: { findings: '两条', hazardCount: 2, signedBy: '测试员', signedAt: t0 }, problems: [] },
+    { id: 'Y-CUR-2', code: 'FZXJ-' + Y0 + '-802', planName: '当年单据乙', type: '日常巡检', area: 'U 区',
+      dept: '仓储部', executor: '测试员', scheduledDate: t0, status: 'planned',
+      photos: shot(1), hazardCount: 3, hazardLevel: 'major', fixDueDate: futD, fixDate: '', fixPhotos: [],
+      problems: [] },
+    { id: 'Y-OLD-1', code: 'FZXJ-' + LY + '-900', planName: '去年单据（跨年）', type: '日常巡检', area: 'V 区',
+      dept: '质检部', executor: '测试员', scheduledDate: oldD, status: 'done', completedAt: oldD,
+      photos: shot(4), hazardCount: 7, hazardLevel: 'major', fixDueDate: oldD, fixDate: '', fixPhotos: [],
+      record: { findings: '跨年数据', hazardCount: 7, signedBy: '测试员', signedAt: oldD }, problems: [] }
+  ];
+  SD.store.save();
+  await SD.app.reload();
+  await wait(400);
+
+  const yrSt = SD.app.state.summary.inspectionStats;
+  ok('统计年份 = 当前自然年', yrSt.year === Y0, yrSt.year);
+  ok('巡检记录只算当年（2 项，去年那条不计）', yrSt.records === 2, yrSt.records);
+  ok('全库记录数仍然可查（3 项，作对照）', yrSt.recordsAll === 3, yrSt.recordsAll);
+  ok('隐患条数只算当年（2+3=5，不含去年 7 条）', yrSt.hazardCount === 5, yrSt.hazardCount);
+  ok('状态计数只算当年（done 1 / planned 1）',
+    yrSt.byStatus.done === 1 && yrSt.byStatus.planned === 1, JSON.stringify(yrSt.byStatus));
+  ok('分部门不含去年的质检部',
+    !yrSt.byDept.some(d => d.dept === '质检部'), yrSt.byDept.map(d => d.dept).join('/'));
+
+  const yrIp = SD.app.state.summary.inspectionPhotos;
+  ok('隐患照片只算当年（2+1=3 张，不含去年 4 张）', yrIp.totalPhotos === 3, yrIp.totalPhotos);
+  ok('照片趋势横轴 = 本年度 1–12 月',
+    yrIp.trend.months.length === 12 && yrIp.trend.months[0] === Y0 + '-01' &&
+    yrIp.trend.months[11] === Y0 + '-12',
+    yrIp.trend.months[0] + ' … ' + yrIp.trend.months[11]);
+  ok('条数趋势横轴同样是本年度 1–12 月',
+    yrSt.trend.length === 12 && yrSt.trend[0].ym === Y0 + '-01' && yrSt.trend[11].ym === Y0 + '-12',
+    yrSt.trend.length ? yrSt.trend[0].ym + ' … ' + yrSt.trend[11].ym : '空');
+
+  await go('dashboard');
+  await wait(500);
+  const yCards = Array.from(view().querySelectorAll('.grid.cols-4 > *'))
+    .map(c => c.textContent.replace(/\s+/g, ' '));
+  ok('看板 KPI 隐患条数 = 5 条（跨年 7 条不计入）', /隐患条数\s*5\s*条/.test(yCards[0]), yCards[0].slice(0, 40));
+  const scopeEl = view().querySelector('.js-year-scope');
+  const scopeTxt = scopeEl ? scopeEl.textContent.replace(/\s+/g, ' ') : '';
+  ok('看板顶部写明统计范围 = 当前自然年', new RegExp('统计范围：' + Y0 + ' 年').test(scopeTxt), scopeTxt.slice(0, 80));
+  ok('看板顶部写明跨年不计入并给出全库对照',
+    /跨年记录不计入/.test(scopeTxt) && /全库共\s*3\s*项/.test(scopeTxt), scopeTxt.slice(0, 120));
+  const yTrendCard = Array.from(view().querySelectorAll('.card'))
+    .find(c => /巡检隐患条数趋势/.test((c.querySelector('h3') || {}).textContent || ''));
+  ok('趋势卡副标题写明「当年各月」（不再是近 12 个月）',
+    !!yTrendCard && new RegExp(Y0 + ' 年各月').test(yTrendCard.textContent) &&
+    !/近 12 个月/.test(yTrendCard.textContent),
+    yTrendCard ? yTrendCard.querySelector('.sub').textContent : '无');
+  const yPhotoCard = Array.from(view().querySelectorAll('.card'))
+    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '各部门隐患照片');
+  ok('照片汇总合计 = 3 张（去年 4 张不进当年）',
+    !!yPhotoCard && /合计 3 张/.test(yPhotoCard.textContent.replace(/\s+/g, ' ')),
+    yPhotoCard ? (yPhotoCard.querySelector('.js-total') || {}).textContent : '无');
+  const yNote = view().textContent.replace(/\s+/g, ' ');
+  ok('口径说明新增「四、统计范围」并写明只统计当年',
+    /四、统计范围/.test(yNote) && /只统计当前自然年/.test(yNote) && /不计入/.test(yNote));
+  ok('看板副标题带年份', new RegExp(Y0 + ' 年').test(SD.views.dashboard.sub(SD.app.state.summary)),
+    SD.views.dashboard.sub(SD.app.state.summary));
+
+  /* ---- 17.2 巡检页：年度汇总条 + 列表仍可切年份查往年 ---- */
+  await go('inspection');
+  await wait(400);
+  const ySum = view().querySelector('.js-insp-sum');
+  const ySumTxt = ySum ? ySum.textContent.replace(/\s+/g, ' ') : '';
+  ok('巡检页汇总条写明年度口径', new RegExp(Y0 + ' 年度记录').test(ySumTxt), ySumTxt.slice(0, 70));
+  ok('汇总条当年 2 项 + 提示全库 3 项',
+    /年度记录[^0-9]*2\s*项/.test(ySumTxt) && /全部年份共 3 项/.test(ySumTxt), ySumTxt.slice(0, 110));
+
+  click2(Array.from(view().querySelectorAll('.chip')).find(c => c.textContent.trim() === '全部'));
+  await wait(300);
+  const ySel = view().querySelector('.js-year-sel');
+  ok('列表有年份下拉且默认当年', !!ySel && ySel.value === Y0, ySel ? ySel.value : '无');
+  if (ySel) {
+    ySel.value = LY;
+    ySel.dispatchEvent(new win.Event('change', { bubbles: true }));
+    await wait(700);
+    const rowsLY = Array.from(view().querySelectorAll('tbody tr'))
+      .map(tr => tr.textContent.replace(/\s+/g, ' '));
+    ok('切到去年：列表能看到跨年那条（往年记录没被藏掉）',
+      rowsLY.length === 1 && /FZXJ-/.test(rowsLY[0]) && /去年单据/.test(rowsLY[0]), rowsLY.join(' | '));
   }
 
   ok('全程无 JS 报错', errors.length === 0, errors.join(' | ').slice(0, 200));

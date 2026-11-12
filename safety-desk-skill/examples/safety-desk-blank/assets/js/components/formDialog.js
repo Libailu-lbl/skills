@@ -13,6 +13,9 @@
        type      : text | textarea | date | number | select | switch | photos | people | code | checks
        options   : array    select / checks 用，['A','B'] 或 [{v,n}]
        required  : bool     必填（空值拦截；photos 用「至少一张」判定；checks 用「至少勾一项」）
+       requiredMsg: string  必填未填时的提示文案（★ 2026-11-12）——
+                            默认是「「X」不能为空」，但只说"不能为空"用户不知道为什么要填；
+                            业务字段（如整改期限）可以给一句带原因的说明，见巡检表单的 DUE_REQUIRED_MSG
        full      : bool     独占一行（默认两列布局；photos / people 建议给 full）
        def       : any|fn   默认值（函数则在打开时求值）
        max       : number   photos 最多张数（默认 3）/ people 最多人数（默认 8）
@@ -233,7 +236,7 @@ SD.comp.formDialog = (function () {
       if (f.type === 'photos' || f.type === 'people') empty = !Array.isArray(v) || v.length === 0;
       // 多选是 {picks, other}，「至少勾一项」才算填了
       if (f.type === 'checks') empty = !(v && Array.isArray(v.picks) && v.picks.length);
-      if (f.required && empty) return '「' + f.label + '」不能为空';
+      if (f.required && empty) return f.requiredMsg || ('「' + f.label + '」不能为空');
       if (empty) continue;
       // 编号：空 / 格式 / 同类型重复，统一交给 SD.code.check（七类单据同一套判定）
       if (f.type === 'code' && SD.code) {

@@ -93,11 +93,17 @@ SD.views.inspection = (function () {
     /* 整改期限 ★ 2026-11-12 新增（用户要求）：
        问题**应改完**的日期 —— 与下面「整改日期」（实际改完的那天）是两件事。
        有了它才能算「逾期未整改」与「整改及时率」，此前看板这两个指标只能看隐患台账。
-       ⚠️ 非必填、**不设默认值**：留空 = 未设期限，看板单独计一格、不判逾期也不判按期。
-         如果给默认值（比如今天），新表单人人有期限，"未设期限"这一格就永远不出现。 */
+
+       ★ 2026-11-12 第二次调整（用户要求）：**新增时必填**，未填阻止提交。
+         必填标记**不写在这个对象里**（这里写死就会连带把「编辑」也变成必填），
+         由下面的 resolveFields 按「新增 / 编辑」注入 —— 见该函数处注释。
+       ⚠️ **不设默认值**：给个默认（比如今天）等于替用户编了一个期限，
+         逾期与及时率就全成了假数。必须让人自己看着现场定。
+       ⚠️ 历史记录（本字段上线前登记的）可能为空，仍按「未设期限」单独计一格，
+         不判逾期也不判按期。 */
     {
       name: 'fixDueDate', label: '整改期限', type: 'date',
-      help: '要求整改完成的日期（留空 = 未设期限，不参与逾期判定）'
+      help: '要求整改完成的日期'
     },
     /* 整改日期 ★ 2026-11-11 新增（用户要求）：
        隐患整改**完成**的日期。与「计划日期」不是一回事 —— 计划日期是打算哪天巡检，
@@ -122,10 +128,30 @@ SD.views.inspection = (function () {
 
   /** options 支持传函数（打开弹窗时才求值，保证读到最新数据）；
       编号字段在编辑时带上 selfId，唯一性校验好排除自己 */
+
+  /* ---------------- 整改期限的「新增必填」（★ 2026-11-12）----------------
+     为什么必填只在新增侧：本字段 2026-11-12 才上线，之前登记的历史记录一条都没有期限。
+     若在编辑侧也强制，用户打开任何一条老单都会被堵在保存按钮前（改个备注也得先编个期限），
+     属于把口径升级的成本摊到使用者头上。新增必填已经能保证「从此以后的单都有期限」，
+     历史单按「未设期限」单独计一格，看板不判逾期也不判按期 —— 账算清、不编数。 */
+  var DUE_REQUIRED_MSG = '请填写「整改期限」：新增巡检必须给出要求整改完成的日期，' +
+    '否则看板无法判定逾期与整改及时率';
+
   function resolveFields(t) {
+    var isEdit = !!t;
     return FIELDS.map(function (f) {
       if (typeof f.options === 'function') f = Object.assign({}, f, { options: f.options() });
       if (f.type === 'code') f = Object.assign({}, f, { selfId: t ? t.id : null });
+      if (f.name === 'fixDueDate') {
+        /* 必填只加在新增；requiredMsg 让提示说清「为什么必须填」，而不是干巴巴一句「不能为空」 */
+        f = Object.assign({}, f, {
+          required: !isEdit,
+          requiredMsg: DUE_REQUIRED_MSG,
+          help: isEdit
+            ? '要求整改完成的日期（本条历史记录可能未设置，可留空）'
+            : '必填：要求整改完成的日期。看板的「逾期未整改」「整改及时率」都靠它判定'
+        });
+      }
       return f;
     });
   }
@@ -205,9 +231,15 @@ SD.views.inspection = (function () {
     var isEdit = !!t;
     var hzN = isEdit ? SD.metrics.hazardCountOf(t) : 0;
     var fieldList = resolveFields(t);
+    /* 「整改期限」那份字段对象（resolveFields 已按新增/编辑注入 required）：
+       多部门模式下整单字段被隐藏、期限改由各行自己填，这里要临时把必填关掉，
+       否则表单级校验会盯着那个**看不见的空输入框**报错，用户根本无从下手。 */
+    var dueField = fieldList.filter(function (f) { return f.name === 'fixDueDate'; })[0] || null;
     var editor = null;        // 多部门模式下的行编辑器
     var multiMode = false;
     var host = null, splitBar = null;
+
+    function setDueRequired(on) { if (dueField) dueField.required = !!on; }
 
     var dlg = SD.comp.formDialog.open({
       title: isEdit ? '编辑巡检任务' : '新增巡检任务',
@@ -217,7 +249,7 @@ SD.views.inspection = (function () {
          这里必须把读出来的值注入表单 —— 否则输入框显示 0，用户只改个备注点保存，
          顶层 hazardCount 就被写成 0，历史条数被抹掉（数据损坏级）。 */
       values: isEdit ? Object.assign({}, t, { hazardCount: hzN }) : {},
-      hint: isEdit ? '' : '新增后自动计入本周完成率分母',
+      hint: isEdit ? '' : '新增后自动计入本周完成率分母；「整改期限」为必填项',
       okText: isEdit ? '保存' : '新增',
       /* 表单级校验：单部门模式条数必须是整数；多部门模式交给行编辑器逐行校验 */
       validate: function (v) {
@@ -271,7 +303,10 @@ SD.views.inspection = (function () {
              所以这里兜一层并明确告知 */
           try {
             editor = SD.comp.problemRows.mount(host, {
-              value: rows, depts: deptOptions(), actions: [backBtn]
+              value: rows, depts: deptOptions(), actions: [backBtn],
+              /* ★ 2026-11-12：新增时**每个部门都要有整改期限**（与单部门口径一致）；
+                 编辑历史单不强制（老记录本就没有期限，见 resolveFields 处的说明） */
+              requireDue: !isEdit
             });
           } catch (err) {
             multiMode = false;
@@ -279,6 +314,8 @@ SD.views.inspection = (function () {
             U.toast('明细录入区加载失败，已退回单部门模式', 'err');
             return;
           }
+          /* 整单期限字段已被隐藏，必填交给各行自己校验 */
+          setDueRequired(false);
           hideScalars(true);
         }
 
@@ -303,6 +340,8 @@ SD.views.inspection = (function () {
           multiMode = false;
           editor = null;
           hideScalars(false);
+          /* 回到单部门：整单期限重新回到必填（exitMulti 已把汇总值回填进输入框） */
+          setDueRequired(!isEdit);
           showSplitBar();
         }
 
@@ -700,17 +739,24 @@ SD.views.inspection = (function () {
     /* ---------- 巡检口径汇总条（★ 2026-11-11 新增） ----------
        与数据看板「安全巡检（隐患与整改）」段**读同一份** summary.inspectionStats，
        所以两页的「巡检记录 / 隐患条数 / 整改状态」数值必然相等 —— 用户要求的口径统一就落在这里。
-       刻意不用指标卡（.stat）：上面四张是「本周」口径，这条是「全部记录」口径，
-       混在卡片里会让人以为同一周期。文字里写明「不限本周 / 年份」。 */
+       刻意不用指标卡（.stat）：上面四张是「本周」口径，这条是「本年度」口径，
+       混在卡片里会让人以为同一周期。
+       ★ 2026-11-12：看板改为「只统计当前自然年」后，这条也必须跟着改成年度口径 ——
+         否则同一屏上「本周 4 项」与「全年 30 项」看起来还行，但用户到看板一对就发现
+         数据对不上（看板是当年、这里全是年）。文案直接写出年份，别让人猜。 */
     var st = s.inspectionStats || {
-      records: 0, hazardCount: 0, fix: { none: 0, doing: 0, done: 0 }, fixRate: null
+      records: 0, recordsAll: 0, year: '', hazardCount: 0, fix: { none: 0, doing: 0, done: 0 }, fixRate: null
     };
+    var stYear = st.year || String(s.today || '').slice(0, 4);
     var sumBar = U.h(
       '<div class="t-3 t-sm js-insp-sum" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px">' +
-        '<span>全部记录（不限本周 / 年份）<b class="t-2">' + st.records + '</b> 项 · ' +
+        '<span>' + U.esc(stYear) + ' 年度记录（按计划日期归年，跨年不计入）<b class="t-2">' + st.records + '</b> 项 · ' +
         '发现隐患 <b class="t-2">' + st.hazardCount + '</b> 条 · ' +
         '未整改 ' + st.fix.none + ' · 整改中 ' + st.fix.doing + ' · 已整改 ' + st.fix.done +
-        '（整改率 ' + (st.fixRate == null ? '—' : U.pct(st.fixRate, 1, 0)) + '）</span>' +
+        '（整改率 ' + (st.fixRate == null ? '—' : U.pct(st.fixRate, 1, 0)) + '）' +
+        (st.recordsAll && st.recordsAll !== st.records
+          ? '　<span class="t-3">全部年份共 ' + st.recordsAll + ' 项</span>' : '') +
+        '</span>' +
         '<span style="flex:1 1 auto"></span>' +
         '<button class="btn sm ghost js-go-dash" type="button" title="看板里的「安全巡检」段与本条同源同值">去数据看板</button>' +
       '</div>'
@@ -931,7 +977,13 @@ SD.views.inspection = (function () {
       '「整改日期」记整改完成的那天，与「计划日期」相互独立。<br>' +
       '<b class="t-2">整改期限</b>　「整改期限」是<b>要求改完</b>的那天，「整改日期」是<b>实际改完</b>的那天，两者不是一回事：' +
       '期限早于实际完成日 = 超期整改；只填期限、没填日期 = 逾期未整改（期限已过时）。' +
-      '<b>留空 = 未设期限</b>，看板单独计一格，既不判逾期也不判按期 —— 没约定过时限却被算成"按期"，是编数。<br>' +
+      '<b>新增巡检时「整改期限」为必填项</b>（分部门登记时每一行都要填），未填会阻止提交 —— ' +
+      '没有期限就看不出逾期，也谈不上及时率。' +
+      '<b>留空 = 未设期限</b>（仅可能出现在本字段上线前的历史记录里），看板单独计一格，' +
+      '既不判逾期也不判按期 —— 没约定过时限却被算成"按期"，是编数。<br>' +
+      '<b class="t-2">统计范围</b>　数据看板只统计<b>当前自然年</b>（按计划日期归年），' +
+      '跨年记录不计入看板任何数字；本页上方那条年度汇总与看板同源同值。' +
+      '列表仍可切年份查看往年记录（往年只影响列表，不进看板）。<br>' +
       '<b class="t-2">分部门登记</b>　一趟巡检走了几个部门、各有各的问题时，点表单里的「按部门拆分」，' +
       '每个部门一行（部门 / 问题内容 / 等级 / 条数 / 照片 / 整改）。一张单仍是<b>一条</b>记录、一个编号；' +
       '看板按明细行汇总：<b>各部门相加恒等于整单</b>。只涉及一个部门时不用拆分，照常填「隐患条数 / 照片」即可。' +
