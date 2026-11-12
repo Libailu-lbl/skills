@@ -192,10 +192,10 @@ function ok(name, cond, extra) {
   const photoCard = Array.from(view().querySelectorAll('.card'))
     .find(c => {
       const t = (c.querySelector('h3') || {}).textContent || '';
-      /* 精确匹配：不能用 includes —— 「各部门隐患照片趋势」也含「各部门隐患照片」 */
-      return t.trim() === '各部门隐患照片';
+      /* 精确匹配：不能用 includes —— 「各部门隐患趋势」也含「各部门隐患」 */
+      return t.trim() === '各部门隐患';
     });
-  ok('看板有「各部门隐患照片」区块', !!photoCard);
+  ok('看板有「各部门隐患」区块（v1.4.1 改名）', !!photoCard);
   if (photoCard) {
     const rows = Array.from(photoCard.querySelectorAll('.bar-row')).map(r => r.textContent.replace(/\s+/g, ' '));
     ok('条形行数 = 3 个部门', rows.length === 3, rows.join(' / '));
@@ -206,8 +206,8 @@ function ok(name, cond, extra) {
   }
 
   const trendCard = Array.from(view().querySelectorAll('.card'))
-    .find(c => /各部门隐患照片趋势/.test((c.querySelector('h3') || {}).textContent || ''));
-  ok('趋势区块标题已改为「各部门隐患照片趋势」', !!trendCard);
+    .find(c => /各部门隐患趋势/.test((c.querySelector('h3') || {}).textContent || ''));
+  ok('趋势区块标题为「各部门隐患趋势」', !!trendCard);
 
   const typeCard = Array.from(view().querySelectorAll('.card'))
     .find(c => (c.querySelector('h3') || {}).textContent.trim() === '隐患类型分布');
@@ -456,8 +456,8 @@ function ok(name, cond, extra) {
   await go('dashboard');
   await wait(300);
   const inspSec = Array.from(view().querySelectorAll('.card'))
-    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '安全巡检（隐患与整改）');
-  ok('看板有「安全巡检（隐患与整改）」段', !!inspSec);
+    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '隐患与整改');
+  ok('看板有「隐患与整改」段', !!inspSec);
   const inspTxt = inspSec ? inspSec.textContent.replace(/\s+/g, ' ') : '';
   /* ★ 2026-11-12 本段已瘦身：原来那 4 格（巡检记录 / 隐患条数 / 已整改 / 整改率）
      与顶部 KPI 重复，已上移；本段改放「期限口径」三格 —— KPI 里没有、也只有
@@ -696,7 +696,7 @@ function ok(name, cond, extra) {
   ok('顶部 KPI 仍正好 4 张', view().querySelectorAll('.grid.cols-4 > *').length === 4,
     view().querySelectorAll('.grid.cols-4 > *').length);
   const photoCard2 = Array.from(view().querySelectorAll('.card'))
-    .find(c => ((c.querySelector('h3') || {}).textContent || '').trim() === '各部门隐患照片');
+    .find(c => ((c.querySelector('h3') || {}).textContent || '').trim() === '各部门隐患');
   ok('合计文案区分「处」与「任务」',
     !!photoCard2 && /合计 3 张 \/ 2 项（共 1 项任务）/.test(photoCard2.textContent),
     photoCard2 && photoCard2.querySelector('.js-total').textContent);
@@ -840,7 +840,7 @@ function ok(name, cond, extra) {
   ok('KPI 整改率 = 30%（3/10）', /整改率\s*30%/.test(fdKpi[3]), fdKpi[3].slice(0, 40));
 
   const fdSec = Array.from(view().querySelectorAll('.card'))
-    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '安全巡检（隐患与整改）');
+    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '隐患与整改');
   const fdTxt = fdSec ? fdSec.textContent.replace(/\s+/g, ' ') : '';
   ok('段内「未设期限」= 1 条', /未设期限\s*1\s*条/.test(fdTxt), fdTxt.slice(0, 80));
   ok('段内「整改及时率」= 0%', /整改及时率\s*0%/.test(fdTxt), fdTxt.slice(0, 120));
@@ -849,13 +849,13 @@ function ok(name, cond, extra) {
   ok('逾期条形按条件数摊到部门（生产一部 2 条）', /生产一部\s*2\s*条/.test(fdTxt), fdTxt.slice(-120));
 
   const fdTrend = Array.from(view().querySelectorAll('.card'))
-    .find(c => /巡检隐患条数趋势/.test((c.querySelector('h3') || {}).textContent || ''));
+    .find(c => /缝制中心隐患趋势/.test((c.querySelector('h3') || {}).textContent || ''));
   ok('趋势卡改为巡检条数（上报 / 已整改两条线）',
     !!fdTrend && /上报/.test(fdTrend.textContent) && /已整改/.test(fdTrend.textContent));
   ok('趋势卡不再出现台账的「闭环」线', !!fdTrend && !/闭环/.test(fdTrend.textContent));
 
   const fdDept = Array.from(view().querySelectorAll('.card'))
-    .find(c => /巡检各部门整改率/.test((c.querySelector('h3') || {}).textContent || ''));
+    .find(c => /各部门整改率/.test((c.querySelector('h3') || {}).textContent || ''));
   ok('整改率卡改为巡检口径，label 为「已整改/条数」',
     !!fdDept && /已整改条数 \/ 该部门隐患条数/.test(fdDept.textContent) &&
     /（3\/5）/.test(fdDept.textContent.replace(/\s+/g, ' ')),
@@ -1135,13 +1135,13 @@ function ok(name, cond, extra) {
   ok('看板顶部写明跨年不计入并给出全库对照',
     /跨年记录不计入/.test(scopeTxt) && /全库共\s*3\s*项/.test(scopeTxt), scopeTxt.slice(0, 120));
   const yTrendCard = Array.from(view().querySelectorAll('.card'))
-    .find(c => /巡检隐患条数趋势/.test((c.querySelector('h3') || {}).textContent || ''));
+    .find(c => /缝制中心隐患趋势/.test((c.querySelector('h3') || {}).textContent || ''));
   ok('年档趋势卡副标题写明「当年各月」（不再是近 12 个月）',
     !!yTrendCard && new RegExp(Y0 + ' 年各月').test(yTrendCard.textContent) &&
     !/近 12 个月/.test(yTrendCard.textContent),
     yTrendCard ? yTrendCard.querySelector('.sub').textContent : '无');
   const yPhotoCard = Array.from(view().querySelectorAll('.card'))
-    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '各部门隐患照片');
+    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '各部门隐患');
   ok('照片汇总合计 = 3 张（去年 4 张不进当年）',
     !!yPhotoCard && /合计 3 张/.test(yPhotoCard.textContent.replace(/\s+/g, ' ')),
     yPhotoCard ? (yPhotoCard.querySelector('.js-total') || {}).textContent : '无');
@@ -1253,7 +1253,7 @@ function ok(name, cond, extra) {
   ok('跨月补完：5 日为上月上报的 2 条', curSt.daily[4].fixed === 2, JSON.stringify(curSt.daily[4]));
   ok('fixedCarryIn = 2（本月改完但上报不在本月）', curSt.fixedCarryIn === 2, curSt.fixedCarryIn);
   const carryLegend = Array.from(view().querySelectorAll('.card'))
-    .find(c => /巡检隐患条数趋势/.test((c.querySelector('h3') || {}).textContent || ''));
+    .find(c => /缝制中心隐患趋势/.test((c.querySelector('h3') || {}).textContent || ''));
   ok('趋势图例写明跨月补完来源',
     !!carryLegend && /来自上月及以前上报/.test(carryLegend.textContent.replace(/\s+/g, ' ')),
     carryLegend ? carryLegend.querySelector('.js-legend').textContent : '无');
@@ -1284,7 +1284,7 @@ function ok(name, cond, extra) {
   const prevSt = SD.metrics.inspectionStats(data(), t0, { ym: prevYM2 });
   ok('历史月逾期按「今天」判：上月那条过期未整改 = 4 条', prevSt.due.openOverdue === 4, prevSt.due.openOverdue);
   const prevSec = Array.from(view().querySelectorAll('.card'))
-    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '安全巡检（隐患与整改）');
+    .find(c => (c.querySelector('h3') || {}).textContent.trim() === '隐患与整改');
   ok('月档段副标题标「逾期天数截至今天」',
     !!prevSec && /截至今天/.test(prevSec.textContent), prevSec ? prevSec.querySelector('.sub').textContent : '无');
   ok('上月逐日：10 日上报 1 条', prevSt.daily[9].found === 1, JSON.stringify(prevSt.daily[9]));
